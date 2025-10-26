@@ -23,11 +23,11 @@ class Handler(FileSystemEventHandler):
     # Handle file creation event
     def on_created(self, e):
         if e.is_directory: return
-        print("[+]", "created", e.src_path, "SHA256=", file_sha256(e.src_path))
+        print("created", e.src_path, "SHA256=", file_sha256(e.src_path))
     # Handle file modification event
     def on_modified(self, e):
         if e.is_directory: return
-        print("[*]", "modified", e.src_path, "SHA256=", file_sha256(e.src_path))
+        print("modified", e.src_path, "SHA256=", file_sha256(e.src_path))
     # Handle file deletion event
     def on_deleted(self, event):  
         if not event.is_directory: 
