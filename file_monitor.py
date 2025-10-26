@@ -4,8 +4,9 @@ from watchdog.events import FileSystemEventHandler
 from pathlib import Path
 
 
-WATCH = str(Path.home() / "Downloads")  # adjust to any folder
+FOLDER_OBSERVED = str(Path.home() / "Downloads")  # adjust to any folder
 
+# Handler to detect changes to observed folder
 class Handler(FileSystemEventHandler):
     def on_created(self, event):  
         if not event.is_directory: 
@@ -20,9 +21,11 @@ class Handler(FileSystemEventHandler):
         if not event.is_directory: 
             print("moved", event.src_path, "->", event.dest_path)
 
-print(f"[*] Watching: {WATCH}")
+print(f"Observing: {FOLDER_OBSERVED}")
+
+# Create observer and schedule handler
 observer = Observer()
-observer.schedule(Handler(), WATCH, recursive=True)
+observer.schedule(Handler(), FOLDER_OBSERVED, recursive=True)
 observer.start()
 try:
     while True: 
