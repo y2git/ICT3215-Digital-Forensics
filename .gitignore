@@ -1,2 +1,3 @@
 .venv
 usb_events.json
+__pycache__
