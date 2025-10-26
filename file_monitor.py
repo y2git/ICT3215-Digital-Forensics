@@ -3,6 +3,9 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from pathlib import Path
 
+# Initialize queue and list to store file events
+event_q, file_events = queue.Queue(), []
+
 # Function to compute SHA256 hash of file to verify integrity
 def file_sha256(path):
     try:
@@ -36,6 +39,10 @@ class Handler(FileSystemEventHandler):
     def on_moved(self, event):    
         if not event.is_directory: 
             print("moved", event.src_path, "->", event.dest_path)
+    # Handle any event
+    def on_any_event(self, e):
+        if e.is_directory: return
+        event_q.put({"type": e.event_type, "src": getattr(e, "src_path", None), "dst": getattr(e, "dest_path", None)})
 
 # Print the folder being observed
 print(f"Observing: {FOLDER_OBSERVED}")
@@ -45,8 +52,13 @@ observer = Observer()
 observer.schedule(Handler(), FOLDER_OBSERVED, recursive=True)
 observer.start()
 try:
-    while True: 
-        time.sleep(1)
+    while True:
+        try:
+            ev = event_q.get(timeout=0.5)
+            file_events.append(ev)
+            print(ev)
+        except queue.Empty:
+            pass
 except KeyboardInterrupt:
     observer.stop() 
     observer.join()
