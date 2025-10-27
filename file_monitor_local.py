@@ -45,13 +45,15 @@ def file_sha256(path):
 
 # Function to verify chain integrity
 def verify_chain(entries: List[Dict]) -> bool:
-    prev = "0"*64
-    for i, e in enumerate(entries):
-        payload = f"{e['timestamp']}|{e['event_type']}|{e['data']}|{e['prev_hash']}".encode()
-        if hashlib.sha256(payload).hexdigest() != e["hash"] or e["prev_hash"] != prev:
-            print(f"[!!] Tamper at entry {i}"); return False
-        prev = e["hash"]
-    print("[OK] Chain OK. Final digest:", prev); return True
+    previous_hash = "0"*64 # initial hash
+    for i, event in enumerate(entries):
+        payload = f"{event['timestamp']}|{event['event_type']}|{event['data']}|{event['prev_hash']}".encode() # get the payload to hash
+        if hashlib.sha256(payload).hexdigest() != event["hash"] or event["prev_hash"] != previous_hash: # verify hash and previous hash
+            print(f"[!!] Tamper at entry {i}")
+            return False
+        previous_hash = event["hash"] # update previous hash
+    print("[OK] Chain OK. Final digest:", previous_hash) 
+    return True
 
 # Initialize queue and list to store file events
 event_q, file_events, chain = queue.Queue(), [], []
@@ -60,44 +62,49 @@ last = ["0"*64]
 # Folder to monitor for file changes
 FOLDER_OBSERVED = str(Path.home() / "Downloads")  # adjust to any folder
 
+#Track recently deleted files to determine if it was moved instead
+recent_deletes = {}
+MOVE_WINDOW = 1.0 # 1 second window to consider a delete as part of a move
+
 # Handler to detect changes to observed folder
 class Handler(FileSystemEventHandler):
+    # Handle logging the events
+    def record_event(self, file_event: FileEvent):
+        event_q.put(file_event)
+        file_events.append(file_event)
+        chain_entry = ChainEntry.create("file_event", asdict(file_event), last[0])
+        chain.append(asdict(chain_entry)) 
+        last[0] = chain_entry.hash
+        print(f"[{file_event.action.upper()}]", file_event.src_path, "->" if file_event.dest_path else "", file_event.dest_path or "")
     # Handle file creation event
     def on_created(self, event):  
         if not event.is_directory: 
-            fe = FileEvent(now_sgt_iso(),"created", event.src_path)
-            event_q.put(fe)
-            file_events.append(fe)
-            ce = ChainEntry.create("file_event", asdict(fe), last[0])
-            chain.append(asdict(ce)) 
-            last[0] = ce.hash
+            for old_path, t in list(recent_deletes.items()):
+                if (time.time() - t < MOVE_WINDOW) and (os.path.basename(old_path) == os.path.basename(event.src_path)):
+                    print("Triggered")
+                    file_event = FileEvent(now_sgt_iso(), "moved", old_path, event.src_path)
+                    self.record_event(file_event)
+                    recent_deletes.pop(old_path, None)
+                    return
+            # Otherwise, normal create
+            file_event = FileEvent(now_sgt_iso(), "created", event.src_path)
+            self.record_event(file_event)
     # Handle file modification event
     def on_modified(self, event):
         if not event.is_directory: 
-            fe = FileEvent(now_sgt_iso(),"modified", event.src_path)
-            event_q.put(fe)
-            file_events.append(fe)
-            ce = ChainEntry.create("file_event", asdict(fe), last[0])
-            chain.append(asdict(ce)) 
-            last[0] = ce.hash
+            file_event = FileEvent(now_sgt_iso(), "modified", event.src_path)
+            self.record_event(file_event)
     # Handle file deletion event
     def on_deleted(self, event):  
         if not event.is_directory: 
-            fe = FileEvent(now_sgt_iso(),"deleted", event.src_path)
-            event_q.put(fe)
-            file_events.append(fe)
-            ce = ChainEntry.create("file_event", asdict(fe), last[0])
-            chain.append(asdict(ce)) 
-            last[0] = ce.hash
+            recent_deletes[event.src_path] = time.time() # Add the recently deleted files to this list so it can be checked if the file was moved instead of permanently deleted
+            file_event = FileEvent(now_sgt_iso(), "modified", event.src_path)
+            self.record_event(file_event)
     # Handle file movement event
     def on_moved(self, event):    
         if not event.is_directory: 
-            fe = FileEvent(now_sgt_iso(),"moved", event.src_path, event.dest_path)
-            event_q.put(fe)
-            file_events.append(fe)
-            ce = ChainEntry.create("file_event", asdict(fe), last[0])
-            chain.append(asdict(ce)) 
-            last[0] = ce.hash
+            file_event = FileEvent(now_sgt_iso(),"moved", event.src_path, event.dest_path)
+            self.record_event(file_event)
 
 # Print the folder being observed
 print(f"Observing: {FOLDER_OBSERVED}")
@@ -109,9 +116,9 @@ observer.start()
 try:
     while True:
         try:
-            ev = event_q.get(timeout=0.5)
-            file_events.append(ev)
-            print(ev)
+            event = event_q.get(timeout=0.5)
+            file_events.append(event)
+            print(event)
         except queue.Empty:
             pass
 except KeyboardInterrupt:
@@ -119,5 +126,7 @@ except KeyboardInterrupt:
     observer.join()
 
     # Output Chain Event Log to JSON file
-    out = Path("event_log.json"); out.write_text(json.dumps(chain, indent=2), encoding="utf-8")
-    print(f"[OK] Wrote {out}"); verify_chain(json.loads(out.read_text()))
+    out = Path("event_log.json")
+    out.write_text(json.dumps(chain, indent=2), encoding="utf-8")
+    print(f"[OK] Wrote {out}")
+    verify_chain(json.loads(out.read_text()))

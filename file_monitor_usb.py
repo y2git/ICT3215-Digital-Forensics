@@ -3,7 +3,7 @@ import time, psutil
 USB_MOUNT = "D:\\"  # change to your USB letter
 
 seen = set()
-print(f"[*] Watching for processes started from {USB_MOUNT} ... Ctrl+C to stop")
+print(f"Watching for processes started from {USB_MOUNT} ... Ctrl+C to stop")
 try:
     while True:
         for p in psutil.process_iter(attrs=["pid","exe","cmdline"]):

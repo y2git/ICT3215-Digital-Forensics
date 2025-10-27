@@ -2,3 +2,6 @@
 usb_events.json
 event_log.json
 __pycache__
+HarmlessUSBTest.exe
+HarmlessUSBTest.spec
+build/
