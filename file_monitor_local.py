@@ -81,7 +81,6 @@ class Handler(FileSystemEventHandler):
         if not event.is_directory: 
             for old_path, t in list(recent_deletes.items()):
                 if (time.time() - t < MOVE_WINDOW) and (os.path.basename(old_path) == os.path.basename(event.src_path)):
-                    print("Triggered")
                     file_event = FileEvent(now_sgt_iso(), "moved", old_path, event.src_path)
                     self.record_event(file_event)
                     recent_deletes.pop(old_path, None)
