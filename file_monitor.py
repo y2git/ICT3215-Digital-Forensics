@@ -117,5 +117,7 @@ try:
 except KeyboardInterrupt:
     observer.stop() 
     observer.join()
-    out = Path("chain_demo.json"); out.write_text(json.dumps(chain, indent=2), encoding="utf-8")
+
+    # Output Chain Event Log to JSON file
+    out = Path("event_log.json"); out.write_text(json.dumps(chain, indent=2), encoding="utf-8")
     print(f"[OK] Wrote {out}"); verify_chain(json.loads(out.read_text()))
