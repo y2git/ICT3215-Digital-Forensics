@@ -1,19 +1,35 @@
-import time, hashlib, queue, os
+import time, hashlib, queue, os, datetime as dt, json
 from dataclasses import dataclass, asdict
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, List
+
+SGT = dt.timezone(dt.timedelta(hours=8))
+def now_sgt_iso(): return dt.datetime.now(SGT).isoformat()
 
 # Data class to represent a file event
 @dataclass
 class FileEvent:
+    timestamp: str
     action: str # e.g., "created", "modified", "deleted", "moved"
     src_path: str # source path of the file
     dest_path: Optional[str] = None # destination path for moved files
 
-# Initialize queue and list to store file events
-event_q, file_events = queue.Queue(), []
+# Data class for blockchain-style chain entries
+@dataclass
+class ChainEntry:
+    timestamp: str
+    event_type: str
+    data: Dict
+    prev_hash: str
+    hash: str
+    @staticmethod
+    def create(event_type, data, prev_hash):
+        ts = now_sgt_iso()
+        payload = f"{ts}|{event_type}|{data}|{prev_hash}".encode()
+        h = hashlib.sha256(payload).hexdigest()
+        return ChainEntry(ts, event_type, data, prev_hash, h)
 
 # Function to compute SHA256 hash of file to verify integrity
 def file_sha256(path):
@@ -27,6 +43,20 @@ def file_sha256(path):
     except Exception:
         return None
 
+# Function to verify chain integrity
+def verify_chain(entries: List[Dict]) -> bool:
+    prev = "0"*64
+    for i, e in enumerate(entries):
+        payload = f"{e['timestamp']}|{e['event_type']}|{e['data']}|{e['prev_hash']}".encode()
+        if hashlib.sha256(payload).hexdigest() != e["hash"] or e["prev_hash"] != prev:
+            print(f"[!!] Tamper at entry {i}"); return False
+        prev = e["hash"]
+    print("[OK] Chain OK. Final digest:", prev); return True
+
+# Initialize queue and list to store file events
+event_q, file_events, chain = queue.Queue(), [], []
+last = ["0"*64]
+
 # Folder to monitor for file changes
 FOLDER_OBSERVED = str(Path.home() / "Downloads")  # adjust to any folder
 
@@ -34,16 +64,40 @@ FOLDER_OBSERVED = str(Path.home() / "Downloads")  # adjust to any folder
 class Handler(FileSystemEventHandler):
     # Handle file creation event
     def on_created(self, event):  
-        if not event.is_directory: event_q.put(FileEvent("created", event.src_path))
+        if not event.is_directory: 
+            fe = FileEvent(now_sgt_iso(),"created", event.src_path)
+            event_q.put(fe)
+            file_events.append(fe)
+            ce = ChainEntry.create("file_event", asdict(fe), last[0])
+            chain.append(asdict(ce)) 
+            last[0] = ce.hash
     # Handle file modification event
     def on_modified(self, event):
-        if not event.is_directory: event_q.put(FileEvent("modified", event.src_path))
+        if not event.is_directory: 
+            fe = FileEvent(now_sgt_iso(),"modified", event.src_path)
+            event_q.put(fe)
+            file_events.append(fe)
+            ce = ChainEntry.create("file_event", asdict(fe), last[0])
+            chain.append(asdict(ce)) 
+            last[0] = ce.hash
     # Handle file deletion event
     def on_deleted(self, event):  
-        if not event.is_directory: event_q.put(FileEvent("deleted", event.src_path))
+        if not event.is_directory: 
+            fe = FileEvent(now_sgt_iso(),"deleted", event.src_path)
+            event_q.put(fe)
+            file_events.append(fe)
+            ce = ChainEntry.create("file_event", asdict(fe), last[0])
+            chain.append(asdict(ce)) 
+            last[0] = ce.hash
     # Handle file movement event
     def on_moved(self, event):    
-        if not event.is_directory: event_q.put(FileEvent("moved", event.src_path, event.dest_path))
+        if not event.is_directory: 
+            fe = FileEvent(now_sgt_iso(),"moved", event.src_path, event.dest_path)
+            event_q.put(fe)
+            file_events.append(fe)
+            ce = ChainEntry.create("file_event", asdict(fe), last[0])
+            chain.append(asdict(ce)) 
+            last[0] = ce.hash
 
 # Print the folder being observed
 print(f"Observing: {FOLDER_OBSERVED}")
@@ -63,3 +117,5 @@ try:
 except KeyboardInterrupt:
     observer.stop() 
     observer.join()
+    out = Path("chain_demo.json"); out.write_text(json.dumps(chain, indent=2), encoding="utf-8")
+    print(f"[OK] Wrote {out}"); verify_chain(json.loads(out.read_text()))
