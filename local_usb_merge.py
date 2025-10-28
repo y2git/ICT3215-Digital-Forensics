@@ -1,4 +1,4 @@
-import time, hashlib, queue, os, datetime as dt, json
+import time, hashlib, queue, os, datetime as dt, json, psutil
 from dataclasses import dataclass, asdict
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
@@ -134,8 +134,19 @@ if USB_MOUNT and os.path.exists(USB_MOUNT):
 # Print message
 print("[*] ... Ctrl+C to stop\n")
 
+seen = set()
 try:
     while True:
+        # Process monitoring events currently not in event.log
+        for p in psutil.process_iter(attrs=["pid","exe","cmdline"]):
+            pid = p.info["pid"]
+            if pid in seen: continue
+            seen.add(pid)
+            exe = p.info.get("exe")
+            if exe and exe.lower().startswith(USB_MOUNT.lower()):
+                print(f"[EXEC] PID={pid} EXE={exe} CMD={p.info.get('cmdline')}")
+
+        # File monitoring events
         try:
             event = event_q.get(timeout=0.5)
             file_events.append(event)
