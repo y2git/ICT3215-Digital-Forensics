@@ -1,4 +1,4 @@
-import time, hashlib, queue, os, datetime as dt, json, psutil
+import time, hashlib, queue, os, datetime as dt, json, psutil, signal, sys
 from dataclasses import dataclass, asdict
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
@@ -7,7 +7,10 @@ from typing import Optional, Dict, List
 import subprocess, json
 
 SGT = dt.timezone(dt.timedelta(hours=8))
-def now_sgt_iso(): return dt.datetime.now(SGT).isoformat()
+def now_sgt_iso():
+    return dt.datetime.now(SGT).isoformat()
+def now_sgt_str(): 
+    return dt.datetime.now(SGT).strftime('%Y%m%dT%H%M%S')
 
 # Data class to represent a file event
 @dataclass
@@ -56,6 +59,17 @@ def verify_chain(entries: List[Dict]) -> bool:
         previous_hash = event["hash"] # update previous hash
     print("[OK] Chain OK. Final digest:", previous_hash) 
     return True
+@dataclass
+class LifecycleEvent:
+    timestamp: str
+    status: str  # "tool_start" or "tool_stop"
+    note: Optional[str] = None
+def record_lifecycle(status: str, note: str = ""):
+    e = LifecycleEvent(now_sgt_iso(), status, note)
+    entry = ChainEntry.create("lifecycle_event", asdict(e), last[0])
+    chain.append(asdict(entry))
+    last[0] = entry.hash
+    print(f"[LIFECYCLE] {status.upper()} @ {e.timestamp}")
 
 # Initialize queue and list to store file events
 event_q, file_events, chain = queue.Queue(), [], []
@@ -162,6 +176,7 @@ if USB_MOUNT and os.path.exists(USB_MOUNT):
 
 # Print message
 print("[*] ... Ctrl+C to stop\n")
+record_lifecycle("tool_start", "Monitoring initiated")
 
 seen = set()
 try:
@@ -191,6 +206,16 @@ except KeyboardInterrupt:
     if obs_usb:
         obs_usb.stop()
         obs_usb.join()
+    record_lifecycle("tool_stop", "Monitoring stopped by user")
+
+    # Generate final digest file
+    final_digest = {
+        "timestamp": now_sgt_iso(),
+        "final_hash": last[0],
+        "total_events": len(chain)
+    }
+    Path("final_digest.json").write_text(json.dumps(final_digest, indent=2), encoding="utf-8")
+    print(f"[OK] Wrote final digest (chain hash): {final_digest['final_hash']}")
 
     # Output Chain Event Log to JSON file
     out = Path("event_log.json"); out.write_text(json.dumps(chain, indent=2), encoding="utf-8")

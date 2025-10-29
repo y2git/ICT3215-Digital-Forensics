@@ -5,3 +5,4 @@ __pycache__
 HarmlessUSBTest.exe
 HarmlessUSBTest.spec
 build/
+final_digest.json
