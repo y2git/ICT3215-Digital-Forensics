@@ -151,6 +151,11 @@ if USB_MOUNT and os.path.exists(USB_MOUNT):
         obs_usb.schedule(Handler(event_q, "USB"), USB_MOUNT, recursive=True)
         obs_usb.start()
         print(f"[*] Monitoring USB: {USB_MOUNT}")
+        try:
+            info = get_usb_device_info("D:")
+            print(json.dumps(info, indent=2))
+        except Exception as e:
+            print(f"[!] Could not get USB info: {e}")
     except Exception as e:
         print(f"[!] Failed to monitor USB {USB_MOUNT}: {e}")
         obs_usb = None
