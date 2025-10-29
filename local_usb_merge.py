@@ -4,6 +4,7 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from pathlib import Path
 from typing import Optional, Dict, List
+import subprocess, json
 
 SGT = dt.timezone(dt.timedelta(hours=8))
 def now_sgt_iso(): return dt.datetime.now(SGT).isoformat()
@@ -109,6 +110,29 @@ class Handler(FileSystemEventHandler):
         if not event.is_directory: 
             file_event = FileEvent(now_sgt_iso(),"moved", event.src_path, event.dest_path)
             self.record_event(file_event)
+
+# Get USB hardware and volume identification details
+def get_usb_device_info(drive_letter: str):
+    info = {"mount": drive_letter, "volume_label": None, "serial_number": None, "pnp_id": None}
+    # Volume label & serial
+    try:
+        r = subprocess.run(["wmic","volume","where",f"DriveLetter='{drive_letter}'","get","Label,SerialNumber","/format:list"],
+                           capture_output=True, text=True)
+        for line in r.stdout.splitlines():
+            if line.startswith("Label="):        info["volume_label"] = line.split("=",1)[1].strip()
+            if line.startswith("SerialNumber="): info["serial_number"] = line.split("=",1)[1].strip()
+    except Exception: pass
+    # PNP ID (VID/PID + device serial)
+    try:
+        r = subprocess.run(["wmic","diskdrive","where","MediaType='Removable Media'","get","PNPDeviceID","/format:list"],
+                           capture_output=True, text=True)
+        for line in r.stdout.splitlines():
+            if line.startswith("PNPDeviceID="):
+                info["pnp_id"] = line.split("=",1)[1].strip(); break
+    except Exception: pass
+    return info
+
+print(json.dumps(get_usb_device_info("D:"), indent=2))
 
 # Create Local Observer
 obs_local = Observer() 
