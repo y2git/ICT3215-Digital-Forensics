@@ -6,3 +6,4 @@ HarmlessUSBTest.exe
 HarmlessUSBTest.spec
 build/
 final_digest.json
+usb-reports/
