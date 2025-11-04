@@ -156,9 +156,6 @@ print(f"[*] Monitoring Local={LOCAL_FOLDER}")
 
 # Create USB Observer
 obs_usb = None
-#obs_usb = Observer()
-#obs_usb.schedule(Handler(event_q, "USB"), USB_MOUNT, recursive=True)
-#obs_usb.start()
 if USB_MOUNT and os.path.exists(USB_MOUNT):
     try:
         obs_usb = Observer()
