@@ -102,3 +102,56 @@ python U-See_Bus.py --verify path/to/usb_session_<timestamp>.json
 ```bash
 python U-See_Bus.py --verify path/to/final_digest_<timestamp>.json
 ```
+
+---
+
+## Output
+
+<INSERT usb_session SCREENSHOTS>
+
+Event log with file & process activity and hash chain
+
+<INSERT final_digest SCREENSHOTS>
+
+Final digest used for verification with USB_session file's SHA256 hash and with final chain hash
+
+<INSERT usb_reports folder SCREENSHOTS>
+
+Root directory for generated files that holds the sub-folders (IDK TO REMOVE OR NOT)
+
+---
+
+## Verification
+
+U-See Bus supports offline validation of evidence integrity
+
+When executed with the session JSON file, it recomputes every link in the chain and checks the hash for any changes.
+
+When executed with with the final digest JSON file, it compares the session_sha256 in the digest with the SHA256 of the current session file. If it is the same, it reconstructs the event chain and comapres with the final_chain_hash to determine if there is any tampering
+
+If there is no tampering detected in session JSON:
+
+<INSERT SCREENSHOT OF SUCCESSFUL FOR SESSION>
+
+If there is no tampering detected in final digest JSON:
+
+<INSERT SCREENSHOT OF SUCCESSFUL FOR FINAL DIGEST>
+
+If there is tampering detected in session JSON:
+
+<INSERT SCREENSHOT OF UNSUCCESSFUL FOR SESSION>
+
+If there is tampering detected in final digest JSON:
+
+<INSERT SCREENSHOT OF UNSUCCESSFUL FOR FINAL DIGEST>
+
+---
+
+## Limitations
+
+1. Currently only works for Windows 10 and 11 due to wmic command in PowerShell
+2. Unable to safely eject drive if "--no-usb-monitoring" is not run as an argument
+3. Does not work on other OS like Linux or Mac
+4. Does not detect other USB devices like SSDs or HDDs
+
+---
