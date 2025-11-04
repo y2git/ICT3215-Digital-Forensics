@@ -51,7 +51,7 @@ To install them, follow the setup steps in the Installation section.
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/y2git/ICT3215-Digital-Forensics
+git clone https://github.com/y2git/ICT3215-Digital-Forensics.git
 cd ICT3215-Digital-Forensics-GonezCase
 
 # 2. Create a virtual environment
