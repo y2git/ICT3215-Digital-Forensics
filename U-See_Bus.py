@@ -5,6 +5,16 @@ from pathlib import Path
 from typing import Dict, List, Optional
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
+import signal
+
+# Function to write JSON atomically
+def atomic_write_json(path: Path, obj):
+    """Safely write JSON to disk and flush to ensure durability."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(obj, f, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
 
 # Functions to get time
 SGT = dt.timezone(dt.timedelta(hours=8))
@@ -193,17 +203,22 @@ def create_usb_observer(device, q, observers, chain, last):
     print(json.dumps(usb_info, indent=2))
 
     # Add USB info to chain
-    chain_entry = ChainEntry.create("usb_info", usb_info, last[0])
+    chain_entry = ChainEntry.create("usb_inserted", usb_info, last[0])
     chain.append(asdict(chain_entry))
     last[0] = chain_entry.hash
 
 # Remove USB observer
-def remove_usb_observer(device, observers):
+def remove_usb_observer(device, observers, chain, last):
     obs_usb = observers.pop(device, None) # get and remove observer
     if obs_usb: # if observer exists
         obs_usb.stop() # stop the observer
         obs_usb.join(timeout=3) # wait for it to finish
         print(f"[-] USB device removed: {device}")
+        # Log chain entry for USB REMOVAL
+        removal_data = {"mount": device, "timestamp": now_sgt_iso()}
+        chain_entry = ChainEntry.create("usb_removed", removal_data, last[0])
+        chain.append(asdict(chain_entry))
+        last[0] = chain_entry.hash
 
 # Start USB monitor thread
 def start_usb_monitor_thread(q, observers, chain, last, monitor_usb):
@@ -216,7 +231,7 @@ def start_usb_monitor_thread(q, observers, chain, last, monitor_usb):
         if action == "inserted": # create observer when USB is inserted
             create_usb_observer(device, q, observers, chain, last)
         elif action == "removed": # remove observer when USB is removed
-            remove_usb_observer(device, observers)
+            remove_usb_observer(device, observers, chain, last)
 
     threading.Thread(target=monitor_usb_insertion, args=(usb_callback,), daemon=True).start() # start monitoring in a separate thread
 
@@ -255,6 +270,11 @@ def run_monitor(local_paths: List[str], usb_mount: str, out_dir: list, monitor_u
     Path(out_dir[0]).mkdir(exist_ok=True) # create base output directory
     Path(out_dir[0]+"\\"+out_dir[1]).mkdir(exist_ok=True) # create session output directory
     Path(out_dir[0]+"\\"+out_dir[2]).mkdir(exist_ok=True) # create digest output directory
+    base_dir, session_dir, digest_dir = out_dir[0], out_dir[1], out_dir[2]
+    RUN_MARKER = Path(base_dir) / ".running"
+    CHECKPOINT_DIR = Path(base_dir) / "checkpoints"
+    startup_recovery_check(RUN_MARKER, base_dir)
+    create_running_marker(RUN_MARKER)
     q = queue.Queue() # initialise queue to hold file events
     chain = [] # initialise list to hold chain entries
     previous_hash = ["0"*64] # initialise previous hash with 64 zeros
@@ -317,6 +337,7 @@ def run_monitor(local_paths: List[str], usb_mount: str, out_dir: list, monitor_u
                 pass
     # When Ctrl+C to stop monitoring
     except KeyboardInterrupt:
+
         print("Stopping monitors...")
 
         # Stop all observers
@@ -342,7 +363,7 @@ def run_monitor(local_paths: List[str], usb_mount: str, out_dir: list, monitor_u
         
         # Save session report
         session_path = Path(out_dir[0])/f"{out_dir[1]}/usb_session_{now_sgt_str()}.json"
-        json.dump(report, open(session_path, "w", encoding="utf-8"),indent=2)
+        atomic_write_json(session_path, report)
         print(f"[✓] Report saved: {session_path}")
 
         # Save final digest
@@ -365,10 +386,69 @@ def run_monitor(local_paths: List[str], usb_mount: str, out_dir: list, monitor_u
         }     
         # Save digest to file  
         digest_name = Path(out_dir[0])/f"{out_dir[2]}/final_digest_{now_sgt_str()}.json"
-        json.dump(digest, open(digest_name, "w", encoding = "utf-8"), indent=2)
+        atomic_write_json(digest_name, digest)
         print(f"[✓] Final digest saved: {digest_name}")
 
         verify_chain([c for c in chain]) # verify the chain before exiting
+        remove_running_marker(RUN_MARKER)
+        print("U-See Bus has stopped successfully.")
+
+# Checking if script ended unexpectedly
+
+def create_running_marker(run_marker: Path):
+    run_marker.parent.mkdir(parents=True, exist_ok=True)
+    with open(run_marker, "w") as f:
+        f.write("running\n")
+        f.flush()
+        os.fsync(f.fileno())
+
+def remove_running_marker(run_marker: Path):
+    try:
+        run_marker.unlink()
+    except FileNotFoundError:
+        pass
+
+def write_checkpoint(checkpoint_dir: Path, final_chain_hash: str, session_path: Path):
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    cp = {
+        "timestamp": now_sgt_iso(),
+        "final_chain_hash": final_chain_hash,
+        "session_path": str(session_path)
+    }
+    fname = checkpoint_dir / f"checkpoint_{now_sgt_str()}.json"
+    with open(fname, "w") as f:
+        json.dump(cp, f, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+
+def startup_recovery_check(run_marker: Path, base_dir: Path):
+    if run_marker.exists():
+        print("[!] Unclean shutdown detected: .running marker found.")
+
+        sessions_path = Path(base_dir) / "usb-sessions"
+        sessions = sorted(sessions_path.glob("usb_session_*.json"))
+        if sessions:
+            last_session = sessions[-1]
+
+            digest_dir = Path(base_dir) / "final-digest"
+            digest_dir.mkdir(parents=True, exist_ok=True)
+
+            digest_path = digest_dir / f"final_digest_unclean_{now_sgt_str()}.json"
+            digest = {
+                "tool": "U-See_Bus",
+                "timestamp": now_sgt_iso(),
+                "session_path": str(last_session),
+                "session_sha256": file_sha256(last_session),
+                "note": "unclean_shutdown_detected_before_startup"
+            }
+            atomic_write_json(digest_path, digest)
+            print(f"[!] Created recovery digest: {digest_path}")
+
+        try:
+            run_marker.unlink()
+        except Exception:
+            pass
+
 
 # ----------------------------
 # CLI entry point
@@ -425,6 +505,7 @@ if __name__=="__main__":
             # If all checks pass
             print("[✓] Final digest verification succeeded. Session integrity intact.")
             sys.exit(0)
+
 
     # Prepare local paths to monitor
     HOME=str(Path.home())
