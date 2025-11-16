@@ -16,6 +16,15 @@ def atomic_write_json(path: Path, obj):
         f.flush()
         os.fsync(f.fileno())
 
+def write_session_file(session_path, file_events, exec_events, chain):
+    session_data = {
+        "timestamp": now_sgt_iso(),
+        "file_events": file_events,
+        "exec_events": exec_events,
+        "chain": chain
+    }
+    atomic_write_json(session_path, session_data)
+
 # Functions to get time
 SGT = dt.timezone(dt.timedelta(hours=8))
 def now_sgt_iso(): 
@@ -110,7 +119,7 @@ def get_usb_device_info(drive_letter: str) -> Dict[str, Optional[str]]:
     return info
 
 last_seen_hashes = {} # initialize last seen hashes dictionary
-
+recent_deleted = {} # initialize recent deleted files dictionary
 # Class to record file system events
 class EventCollector(FileSystemEventHandler):
     def __init__(self, q, label="Local"): 
@@ -119,6 +128,20 @@ class EventCollector(FileSystemEventHandler):
         self.label = label
     def on_created(self, e):
         if not e.is_directory:
+            # Check for move: same filename deleted moments ago
+            basename = os.path.basename(e.src_path)
+
+            for old_path, t in list(recent_deleted.items()):
+                if os.path.basename(old_path) == basename:
+                    # If deleted within last 1 sec → likely a move
+                    if time.time() - t < 1.0:
+                        # Remove from delete cache
+                        recent_deleted.pop(old_path, None)
+
+                        event = FileEvent(now_sgt_iso(), "moved", old_path, e.src_path, file_sha256(e.src_path), self.label)
+                        self.q.put(event)
+                        print(f"[→] {self.label}: {old_path} moved to {e.src_path}")
+                        return
             h = file_sha256(e.src_path) # get the sha256 hash of created file
             last_seen_hashes[e.src_path] = h # store the hash in last seen hashes
             event = FileEvent(now_sgt_iso(), "created", e.src_path, None, h, self.label) # create a FileEvent for creation
@@ -143,6 +166,7 @@ class EventCollector(FileSystemEventHandler):
             print(f"[*] {self.label}: {e.src_path} {action}") # print modification event
     def on_deleted(self, e):
         if not e.is_directory:
+            recent_deleted[e.src_path] = time.time() # record the deletion time
             last_seen_hashes.pop(e.src_path, None) # remove the file from last seen hashes
             event=FileEvent(now_sgt_iso(), "deleted", e.src_path, None, None, self.label) # create a FileEvent for deletion
             self.q.put(event) # put the event in the queue
@@ -267,12 +291,14 @@ def track_exec_from_usb(mount: str, stop_event: threading.Event, collector: List
 # Main function to run the monitor
 def run_monitor(local_paths: List[str], usb_mount: str, out_dir: list, monitor_usb = True):
     print("U-See Bus is executed. Press Ctrl+C to stop.")
-    Path(out_dir[0]).mkdir(exist_ok=True) # create base output directory
-    Path(out_dir[0]+"\\"+out_dir[1]).mkdir(exist_ok=True) # create session output directory
-    Path(out_dir[0]+"\\"+out_dir[2]).mkdir(exist_ok=True) # create digest output directory
     base_dir, session_dir, digest_dir = out_dir[0], out_dir[1], out_dir[2]
+
+    Path(base_dir).mkdir(exist_ok=True) # create base output directory
+    Path(base_dir+"\\"+session_dir).mkdir(exist_ok=True) # create session output directory
+    Path(base_dir+"\\"+digest_dir).mkdir(exist_ok=True) # create digest output directory
     RUN_MARKER = Path(base_dir) / ".running"
-    CHECKPOINT_DIR = Path(base_dir) / "checkpoints"
+    #CHECKPOINT_DIR = Path(base_dir) / "checkpoints"
+    #print(type(RUN_MARKER))
     startup_recovery_check(RUN_MARKER, base_dir)
     create_running_marker(RUN_MARKER)
     q = queue.Queue() # initialise queue to hold file events
@@ -284,6 +310,8 @@ def run_monitor(local_paths: List[str], usb_mount: str, out_dir: list, monitor_u
     chain.append(asdict(chain_entry)) # add to chain
     previous_hash[0] = chain_entry.hash # update previous hash
 
+    session_path = Path(base_dir +"/"+ session_dir + f"/usb_session_{now_sgt_str()}.json")
+    write_session_file(session_path, file_events, exec_events, chain)
 
     observers=[] # list to hold observers
 
@@ -333,6 +361,7 @@ def run_monitor(local_paths: List[str], usb_mount: str, out_dir: list, monitor_u
                 chain_entry=ChainEntry.create("file_event",asdict(event),previous_hash[0]) # create chain entry
                 chain.append(asdict(chain_entry)) # add to chain
                 previous_hash[0]=chain_entry.hash # update previous hash
+                write_session_file(session_path, file_events, exec_events, chain)
             except queue.Empty:
                 pass
     # When Ctrl+C to stop monitoring
@@ -353,7 +382,7 @@ def run_monitor(local_paths: List[str], usb_mount: str, out_dir: list, monitor_u
         chain_entry = ChainEntry.create("tool_stop", {"msg":"stopped"}, previous_hash[0]) # create chain entry for U-See Bus stopping (tool_stop)
         chain.append(asdict(chain_entry)) # add to chain
         previous_hash[0]=chain_entry.hash # update previous hash
-
+        write_session_file(session_path, file_events, exec_events, chain)
         # Save report
         report={"timestamp":now_sgt_iso(),
                 "final_hash":previous_hash[0],
@@ -362,7 +391,7 @@ def run_monitor(local_paths: List[str], usb_mount: str, out_dir: list, monitor_u
                 "chain":chain}
         
         # Save session report
-        session_path = Path(out_dir[0])/f"{out_dir[1]}/usb_session_{now_sgt_str()}.json"
+        #session_path = Path(base_dir)/f"{session_dir}/usb_session_{now_sgt_str()}.json"
         atomic_write_json(session_path, report)
         print(f"[✓] Report saved: {session_path}")
 
@@ -385,7 +414,7 @@ def run_monitor(local_paths: List[str], usb_mount: str, out_dir: list, monitor_u
             }
         }     
         # Save digest to file  
-        digest_name = Path(out_dir[0])/f"{out_dir[2]}/final_digest_{now_sgt_str()}.json"
+        digest_name = Path(base_dir)/f"{digest_dir}/final_digest_{now_sgt_str()}.json"
         atomic_write_json(digest_name, digest)
         print(f"[✓] Final digest saved: {digest_name}")
 
@@ -424,29 +453,36 @@ def write_checkpoint(checkpoint_dir: Path, final_chain_hash: str, session_path: 
 def startup_recovery_check(run_marker: Path, base_dir: Path):
     if run_marker.exists():
         print("[!] Unclean shutdown detected: .running marker found.")
+        #print(run_marker)
+        sessions_path = Path(base_dir + "/usb-sessions")
+        sessions_path.mkdir(parents=True, exist_ok=True)
 
-        sessions_path = Path(base_dir) / "usb-sessions"
         sessions = sorted(sessions_path.glob("usb_session_*.json"))
         if sessions:
             last_session = sessions[-1]
 
-            digest_dir = Path(base_dir) / "final-digest"
+            digest_dir = Path(base_dir + "/final-digest")
             digest_dir.mkdir(parents=True, exist_ok=True)
 
             digest_path = digest_dir / f"final_digest_unclean_{now_sgt_str()}.json"
-            digest = {
+
+            digest_obj = {
                 "tool": "U-See_Bus",
                 "timestamp": now_sgt_iso(),
                 "session_path": str(last_session),
                 "session_sha256": file_sha256(last_session),
                 "note": "unclean_shutdown_detected_before_startup"
             }
-            atomic_write_json(digest_path, digest)
-            print(f"[!] Created recovery digest: {digest_path}")
 
+            atomic_write_json(digest_path, digest_obj)
+            print(f"[!] Created recovery digest: {digest_path}")
+        else:
+            print("[!] Warning: No session files found. Nothing to recover.")
+
+        # Remove marker to allow clean start
         try:
             run_marker.unlink()
-        except Exception:
+        except:
             pass
 
 
