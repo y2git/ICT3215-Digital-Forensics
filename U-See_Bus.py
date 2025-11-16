@@ -9,21 +9,22 @@ import signal
 
 # Function to write JSON atomically
 def atomic_write_json(path: Path, obj):
-    """Safely write JSON to disk and flush to ensure durability."""
-    path.parent.mkdir(parents=True, exist_ok=True)
+    path.parent.mkdir(parents=True, exist_ok=True) # ensure directory exists
     with open(path, "w", encoding="utf-8") as f:
-        json.dump(obj, f, indent=2)
-        f.flush()
-        os.fsync(f.fileno())
+        json.dump(obj, f, indent=2) # write JSON data
+        f.flush() # flush file buffer
+        os.fsync(f.fileno()) # ensure data is written to disk
 
+# Function to write session file
 def write_session_file(session_path, file_events, exec_events, chain):
+    # Contents of session data
     session_data = {
         "timestamp": now_sgt_iso(),
         "file_events": file_events,
         "exec_events": exec_events,
         "chain": chain
     }
-    atomic_write_json(session_path, session_data)
+    atomic_write_json(session_path, session_data) # write session data to file atomically
 
 # Functions to get time
 SGT = dt.timezone(dt.timedelta(hours=8))
@@ -137,7 +138,7 @@ class EventCollector(FileSystemEventHandler):
                     if time.time() - t < 1.0:
                         # Remove from delete cache
                         recent_deleted.pop(old_path, None)
-
+                        # Replace created event with moved event
                         event = FileEvent(now_sgt_iso(), "moved", old_path, e.src_path, file_sha256(e.src_path), self.label)
                         self.q.put(event)
                         print(f"[→] {self.label}: {old_path} moved to {e.src_path}")
@@ -179,12 +180,6 @@ class EventCollector(FileSystemEventHandler):
             event = FileEvent(now_sgt_iso(), "moved", e.src_path, getattr(e, "dest_path", None), h, self.label) # create a FileEvent for move
             self.q.put(event) # put the event in the queue
             print(f"[→] {self.label}: {e.src_path} moved to {e.dest_path}") # print move event
-
-
-
-# ----------------------------
-# USB Monitoring
-# ----------------------------
 
 # Monitor USB insertion/removal (Windows)
 def monitor_usb_insertion(callback):
@@ -277,16 +272,12 @@ def track_exec_from_usb(mount: str, stop_event: threading.Event, collector: List
             # check if exe is from the USB mount
             if exe and exe.lower().startswith(mount.lower()):
                 exeEvent=ExecEvent(now_sgt_iso(),pid,exe,p.info.get("cmdline") or [],p.info.get("username")) # create ExecEvent
-                collector.append(exeEvent) # add to collector
+                collector.append(asdict(exeEvent)) # add to collector
                 chain_entry = ChainEntry.create("exec_event", asdict(exeEvent), last_ref[0]) # create ChainEntry for exec event
                 chain.append(asdict(chain_entry)) # add to chain
                 last_ref[0] = chain_entry.hash # update last reference hash
                 print(f"[EXEC] From USB: {exe} (PID={pid})") # print exec event
         stop_event.wait(1.0) # wait for 1 second before next check
-
-# ----------------------------
-# Main logic
-# ----------------------------
 
 # Main function to run the monitor
 def run_monitor(local_paths: List[str], usb_mount: str, out_dir: list, monitor_usb = True):
@@ -296,11 +287,9 @@ def run_monitor(local_paths: List[str], usb_mount: str, out_dir: list, monitor_u
     Path(base_dir).mkdir(exist_ok=True) # create base output directory
     Path(base_dir+"\\"+session_dir).mkdir(exist_ok=True) # create session output directory
     Path(base_dir+"\\"+digest_dir).mkdir(exist_ok=True) # create digest output directory
-    RUN_MARKER = Path(base_dir) / ".running"
-    #CHECKPOINT_DIR = Path(base_dir) / "checkpoints"
-    #print(type(RUN_MARKER))
-    startup_recovery_check(RUN_MARKER, base_dir)
-    create_running_marker(RUN_MARKER)
+    RUN_MARKER = Path(base_dir) / ".running" # path for running marker
+    startup_recovery_check(RUN_MARKER, base_dir) # check for unclean shutdown
+    create_running_marker(RUN_MARKER) # create running marker
     q = queue.Queue() # initialise queue to hold file events
     chain = [] # initialise list to hold chain entries
     previous_hash = ["0"*64] # initialise previous hash with 64 zeros
@@ -310,8 +299,8 @@ def run_monitor(local_paths: List[str], usb_mount: str, out_dir: list, monitor_u
     chain.append(asdict(chain_entry)) # add to chain
     previous_hash[0] = chain_entry.hash # update previous hash
 
-    session_path = Path(base_dir +"/"+ session_dir + f"/usb_session_{now_sgt_str()}.json")
-    write_session_file(session_path, file_events, exec_events, chain)
+    session_path = Path(base_dir +"/"+ session_dir + f"/usb_session_{now_sgt_str()}.json") # path for session file
+    write_session_file(session_path, file_events, exec_events, chain) # write initial session file
 
     observers=[] # list to hold observers
 
@@ -344,7 +333,7 @@ def run_monitor(local_paths: List[str], usb_mount: str, out_dir: list, monitor_u
 
         chain_entry=ChainEntry.create("usb_info", usb_info, previous_hash[0]) # create chain entry for USB info
         chain.append(asdict(chain_entry)) # add to chain
-        previous_hash[0]=chain_entry.hash
+        previous_hash[0]=chain_entry.hash # update previous hash
 
     stop_event = threading.Event() # event to signal stopping of exec tracking
     # Start thread to track .exe executions from USB
@@ -355,13 +344,13 @@ def run_monitor(local_paths: List[str], usb_mount: str, out_dir: list, monitor_u
         while True:
             try:
                 event=q.get(timeout=0.5) # get event from queue with timeout
-                file_events.append(event) # add to file events list
+                file_events.append(asdict(event)) # add to file events list
 
                 # Create chain entry for file event
                 chain_entry=ChainEntry.create("file_event",asdict(event),previous_hash[0]) # create chain entry
                 chain.append(asdict(chain_entry)) # add to chain
                 previous_hash[0]=chain_entry.hash # update previous hash
-                write_session_file(session_path, file_events, exec_events, chain)
+                write_session_file(session_path, file_events, exec_events, chain) # update session file with new event
             except queue.Empty:
                 pass
     # When Ctrl+C to stop monitoring
@@ -382,16 +371,15 @@ def run_monitor(local_paths: List[str], usb_mount: str, out_dir: list, monitor_u
         chain_entry = ChainEntry.create("tool_stop", {"msg":"stopped"}, previous_hash[0]) # create chain entry for U-See Bus stopping (tool_stop)
         chain.append(asdict(chain_entry)) # add to chain
         previous_hash[0]=chain_entry.hash # update previous hash
-        write_session_file(session_path, file_events, exec_events, chain)
+        write_session_file(session_path, file_events, exec_events, chain) # final update to session file
         # Save report
         report={"timestamp":now_sgt_iso(),
                 "final_hash":previous_hash[0],
-                "file_events":[asdict(e) for e in file_events],
-                "exec_events":[asdict(e) for e in exec_events],
+                "file_events":file_events,
+                "exec_events": exec_events,
                 "chain":chain}
         
         # Save session report
-        #session_path = Path(base_dir)/f"{session_dir}/usb_session_{now_sgt_str()}.json"
         atomic_write_json(session_path, report)
         print(f"[✓] Report saved: {session_path}")
 
@@ -407,10 +395,11 @@ def run_monitor(local_paths: List[str], usb_mount: str, out_dir: list, monitor_u
             "first_event": file_events[0].timestamp_sgt if file_events else None,
             "last_event": file_events[-1].timestamp_sgt if file_events else None,
             "summary": {
-                "files_created": sum(1 for e in file_events if "created" in e.action),
-                "files_modified": sum(1 for e in file_events if "modified" in e.action),
-                "files_deleted": sum(1 for e in file_events if "deleted" in e.action),
-                "exec_from_usb": len(exec_events)
+                "files_created": sum(1 for e in file_events if "created" in e.action), # count created files
+                "files_modified": sum(1 for e in file_events if "modified" in e.action), # count modified files
+                "files_deleted": sum(1 for e in file_events if "deleted" in e.action), # count deleted files
+                "files_moved": sum(1 for e in file_events if "moved" in e.action), # count moved files
+                "exec_from_usb": len(exec_events) # count exec events from USB
             }
         }     
         # Save digest to file  
@@ -422,8 +411,7 @@ def run_monitor(local_paths: List[str], usb_mount: str, out_dir: list, monitor_u
         remove_running_marker(RUN_MARKER)
         print("U-See Bus has stopped successfully.")
 
-# Checking if script ended unexpectedly
-
+# Function to create .running marker to indicate script is running
 def create_running_marker(run_marker: Path):
     run_marker.parent.mkdir(parents=True, exist_ok=True)
     with open(run_marker, "w") as f:
@@ -431,29 +419,17 @@ def create_running_marker(run_marker: Path):
         f.flush()
         os.fsync(f.fileno())
 
+# Function to remove .running marker on clean exit
 def remove_running_marker(run_marker: Path):
     try:
         run_marker.unlink()
     except FileNotFoundError:
         pass
 
-def write_checkpoint(checkpoint_dir: Path, final_chain_hash: str, session_path: Path):
-    checkpoint_dir.mkdir(parents=True, exist_ok=True)
-    cp = {
-        "timestamp": now_sgt_iso(),
-        "final_chain_hash": final_chain_hash,
-        "session_path": str(session_path)
-    }
-    fname = checkpoint_dir / f"checkpoint_{now_sgt_str()}.json"
-    with open(fname, "w") as f:
-        json.dump(cp, f, indent=2)
-        f.flush()
-        os.fsync(f.fileno())
-
+# Checking if script ended unexpectedly last time
 def startup_recovery_check(run_marker: Path, base_dir: Path):
-    if run_marker.exists():
+    if run_marker.exists(): # if .running marker exists
         print("[!] Unclean shutdown detected: .running marker found.")
-        #print(run_marker)
         sessions_path = Path(base_dir + "/usb-sessions")
         sessions_path.mkdir(parents=True, exist_ok=True)
 
@@ -486,9 +462,7 @@ def startup_recovery_check(run_marker: Path, base_dir: Path):
             pass
 
 
-# ----------------------------
-# CLI entry point
-# ----------------------------
+
 if __name__=="__main__":
     parser=argparse.ArgumentParser(description="USB Activity Correlator (Demonstration Enhanced)")
     parser.add_argument("--paths",nargs="*",help="Extra directories to monitor. Usage: python U-See_Bus.py --paths 'C:\path1' 'D:\path2' ",default=[]) # usage: python U-See_Bus.py -- --paths "C:\path1" "D:\path2"
