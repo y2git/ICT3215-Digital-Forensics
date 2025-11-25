@@ -1,0 +1,112 @@
+import psutil, subprocess, time, os, json, threading
+from pathlib import Path
+from watchdog.observers import Observer
+
+from events import EventCollector
+from models import ChainEntry
+from utils import now_sgt_iso, atomic_write_json
+from dataclasses import asdict
+
+# Get USB Info (Windows)
+def get_usb_device_info(drive_letter: str):
+    info = {"mount": drive_letter, "volume_label": None, "serial_number": None, "pnp_id": None} # default info
+    try:
+        # Get volume label and serial number
+        r = subprocess.run(["wmic","volume","where",f"DriveLetter='{drive_letter}'","get","Label,SerialNumber","/format:list"], capture_output=True,text=True)
+        
+        # Split output into lines and extract relevant info
+        for line in r.stdout.splitlines():
+            if "Label=" in line: 
+                info["volume_label"] = line.split("=",1)[1].strip()
+            if "SerialNumber=" in line: 
+                info["serial_number"] = line.split("=",1)[1].strip()
+    except Exception: 
+        pass
+
+    try:
+        # Get PNPDeviceID
+        r = subprocess.run(["wmic","diskdrive","where","MediaType='Removable Media'","get","PNPDeviceID","/format:list"], capture_output=True,text=True)
+        for line in r.stdout.splitlines():
+            if "PNPDeviceID=" in line:
+                info["pnp_id"] = line.split("=",1)[1].strip()
+                break
+    except Exception:
+        pass
+    return info
+
+
+# Monitor USB insertion/removal (Windows)
+def monitor_usb_insertion(callback):
+    prev_drives = {p.device for p in psutil.disk_partitions(all=False)} # get initial set of drives
+    # Polling loop
+    while True:
+        time.sleep(2)
+        current_drives = {p.device for p in psutil.disk_partitions(all=False)} # get current set of drives
+        new_drives = current_drives - prev_drives # detect new drives
+        removed_drives = prev_drives - current_drives # detect removed drives
+        
+        # Trigger callbacks for changes
+        for d in new_drives: # new drive detected
+            callback(d, "inserted")
+        for d in removed_drives: # drive removed
+            callback(d, "removed")
+
+        prev_drives = current_drives # update previous drives for next iteration
+
+
+# Create USB observer
+def create_usb_observer(device, q, observers, chain, last):
+    # Sometimes Windows takes a second to mount the path
+    for _ in range(5):
+        if os.path.exists(device):
+            break
+        time.sleep(1)
+    if not os.path.exists(device):
+        print(f"[!] Drive {device} not yet ready, skipping observer.")
+        return
+    
+    # Create observer for the USB device
+    obs_usb = Observer()
+    obs_usb.schedule(EventCollector(q, "USB"), device, recursive=True)
+    obs_usb.start()
+    print(f"[+] USB device detected and monitored: {device}")
+    observers[device] = obs_usb  # store by drive letter
+
+    # Log USB device info
+    usb_info = get_usb_device_info(device[:2])
+    print(json.dumps(usb_info, indent=2))
+
+    # Add USB info to chain
+    chain_entry = ChainEntry.create("usb_inserted", usb_info, last[0])
+    chain.append(asdict(chain_entry))
+    last[0] = chain_entry.hash
+
+
+# Remove USB observer
+def remove_usb_observer(device, observers, chain, last):
+    obs_usb = observers.pop(device, None) # get and remove observer
+    if obs_usb: # if observer exists
+        obs_usb.stop() # stop the observer
+        obs_usb.join(timeout=3) # wait for it to finish
+        print(f"[-] USB device removed: {device}")
+        # Log chain entry for USB REMOVAL
+        removal_data = {"mount": device, "timestamp": now_sgt_iso()}
+        chain_entry = ChainEntry.create("usb_removed", removal_data, last[0])
+        chain.append(asdict(chain_entry))
+        last[0] = chain_entry.hash
+
+
+# Start USB monitor thread
+def start_usb_monitor_thread(q, observers, chain, last, monitor_usb=True):
+    if not monitor_usb:
+        return  # USB monitoring disabled
+
+    # USB insertion/removal callback
+    def usb_callback(device, action):
+        print(f"[USB] Device {device} {action.upper()} at {now_sgt_iso()}") # log the event
+        if action == "inserted": # create observer when USB is inserted
+            create_usb_observer(device, q, observers, chain, last)
+        elif action == "removed": # remove observer when USB is removed
+            remove_usb_observer(device, observers, chain, last)
+
+    threading.Thread(target=monitor_usb_insertion, args=(usb_callback,), daemon=True).start() # start monitoring in a separate thread
