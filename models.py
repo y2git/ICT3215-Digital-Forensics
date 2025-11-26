@@ -34,4 +34,7 @@ class FileEvent:
 @dataclass
 class ExecEvent:
     timestamp_sgt: str # the time of event
-    pid: int #
+    pid: int # the process id
+    exe_path: str # the path of the executable
+    cmdline: List[str] # the command line arguments
+    username: Optional[str] = None # the user who executed the process
