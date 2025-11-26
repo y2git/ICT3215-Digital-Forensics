@@ -52,7 +52,7 @@ To install them, follow the setup steps in the Installation section.
 ```bash
 # 1. Clone the repository
 git clone https://github.com/y2git/ICT3215-Digital-Forensics.git
-cd ICT3215-Digital-Forensics-GonezCase
+cd ICT3215-Digital-Forensics
 
 # 2. Create a virtual environment
 # On macOS / Linux:
@@ -77,30 +77,30 @@ pip install -r requirements.txt
 
 Default monitoring
 ```bash
-python U-See_Bus.py
+python main.py
 ```
 
 Specify folders to monitor
 ```bash
-python U-See_Bus.py --paths "C:\Users\<User>\Desktop" "C:\Evidence"
+python main.py --paths "C:\Users\<User>\Desktop" "C:\Evidence"
 ```
 
 Disable USB monitoring
 ```bash
-python U-See_Bus.py --no-usb-monitor
+python main.py --no-usb-monitor
 ```
 
 Custom output directories
 ```bash
-python U-See_Bus.py --outdir <directory 1> <directory 2> <directory 3>
+python main.py --outdir <directory 1> <directory 2> <directory 3>
 ```
 
 Verify an existing session or digest
 ```bash
-python U-See_Bus.py --verify path/to/usb_session_<timestamp>.json
+python main.py --verify path/to/usb_session_<timestamp>.json
 ```
 ```bash
-python U-See_Bus.py --verify path/to/final_digest_<timestamp>.json
+python main.py --verify path/to/final_digest_<timestamp>.json
 ```
 
 ---
