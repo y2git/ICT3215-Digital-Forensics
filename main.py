@@ -5,6 +5,32 @@ from monitor import run_monitor
 from chain import verify_chain
 from utils import file_sha256
 
+# Check for conflicts between monitored paths and output directory
+def paths_outdir_conflict_check(local_paths, outdir_base: str):
+    base = Path(outdir_base).expanduser().resolve() # get absolute path of output base directory0
+    conflicting = [] # initialise list for conflicting paths
+
+    for p in local_paths: # iterate through monitored paths
+        p_res = Path(p).expanduser().resolve() # get absolute path of monitored directory
+        try:
+            # If base is inside p_res, then p_res is a parent of the report dir
+            base.relative_to(p_res)
+            conflicting.append(str(p_res))
+        except ValueError:
+            # base is not under this path, so it's fine
+            continue
+
+    if conflicting:
+        print("Configuration error: one or more monitored paths using --path contain the report directory.")
+        print(f"Report base directory: {base}")
+        print("Conflicting monitored paths:")
+        for c in conflicting:
+            print(f"- {c}")
+        print("Please either:")
+        print("• choose a different --paths that does NOT include the report directory; or")
+        print("• set --outdir to a directory outside those monitored paths.\n")
+        sys.exit(1)
+
 # Program Banner
 print("""
 ===========================
@@ -72,7 +98,8 @@ def main():
     HOME=str(Path.home())
     local_paths=[os.path.join(HOME,d) for d in ["Downloads","Documents","OneDrive\\Desktop"] if os.path.isdir(os.path.join(HOME,d))]
     local_paths.extend(args.paths)
-
+    base_dir = args.outdir[0]
+    paths_outdir_conflict_check(local_paths, base_dir)
     run_monitor(local_paths,args.usb_mount,args.outdir,monitor_usb=not args.no_usb_monitor)
 
 
