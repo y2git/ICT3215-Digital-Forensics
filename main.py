@@ -5,9 +5,7 @@ from monitor import run_monitor
 from chain import verify_chain
 from utils import file_sha256
 
-# =======================
-# Simple Program Banner
-# =======================
+# Program Banner
 print("""
 ===========================
    U - S E E   B U S
