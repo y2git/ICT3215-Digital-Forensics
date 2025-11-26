@@ -92,7 +92,6 @@ def run_monitor(local_paths: List[str], usb_mount: str, out_dir: list, monitor_u
     obs_usb = None
     usb_observers_map = {}  # MUST have map for start_usb_monitor_thread
     start_usb_monitor_thread(q, usb_observers_map, chain, previous_hash, monitor_usb)
-
     if monitor_usb and os.path.exists(usb_mount):
         obs_usb = Observer()
         obs_usb.schedule(EventCollector(q,"USB"),usb_mount,recursive=True)
@@ -107,9 +106,9 @@ def run_monitor(local_paths: List[str], usb_mount: str, out_dir: list, monitor_u
         chain.append(asdict(chain_entry))
         previous_hash[0]=chain_entry.hash
 
-    stop_event = threading.Event()
-    track_exec_thread = threading.Thread(target=track_exec_from_usb, args=(usb_mount, stop_event, exec_events, chain, previous_hash), daemon=True)
-    track_exec_thread.start()
+        stop_event = threading.Event()
+        track_exec_thread = threading.Thread(target=track_exec_from_usb, args=(usb_mount, stop_event, exec_events, chain, previous_hash), daemon=True)
+        track_exec_thread.start()
 
     try:
         while True:
@@ -131,9 +130,13 @@ def run_monitor(local_paths: List[str], usb_mount: str, out_dir: list, monitor_u
             obs.stop()
         for obs in observers:
             obs.join()
-
-        stop_event.set()
-        track_exec_thread.join()
+    
+        # If --no-usb-monitor is enabled, ignore stopping USB exec tracking
+        try:
+            stop_event.set()
+            track_exec_thread.join()
+        except:
+            pass
 
         chain_entry = ChainEntry.create("tool_stop", {"msg":"stopped"}, previous_hash[0])
         chain.append(asdict(chain_entry))
@@ -157,8 +160,8 @@ def run_monitor(local_paths: List[str], usb_mount: str, out_dir: list, monitor_u
             "session_sha256": file_sha256(session_path),
             "final_chain_hash": previous_hash[0],
             "total_events": len(chain),
-            "first_event": file_events[0].timestamp_sgt if file_events else None,
-            "last_event": file_events[-1].timestamp_sgt if file_events else None,
+            "first_event": file_events[0]["timestamp_sgt"] if file_events else None,
+            "last_event": file_events[-1]["timestamp_sgt"] if file_events else None,
             "summary": {
                 "files_created": sum(1 for e in file_events if "created" in e["action"]),
                 "files_modified": sum(1 for e in file_events if "modified" in e["action"]),
