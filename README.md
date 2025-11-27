@@ -1,13 +1,8 @@
 # ICT3215-Digital-Forensics-GonezCase
 
 U-See Bus is a Python script that is used to detect the insertion and removal of USB thumbdrives and to detect changes made to files within the folders it is monitoring (Downloads, Documents and Desktop by default).  
+
 It also logs any `.exe` files run by USB drives and uses cryptographic chains to ensure forensic integrity.
-
----
-
-# U-See Bus – USB Forensic Activity Monitor
-
-A lightweight digital forensics tool for Windows that monitors USB activity, tracks file changes, detects executables launched from removable drives, and generates tamper-evident logs using cryptographic hash chaining.
 
 ---
 
