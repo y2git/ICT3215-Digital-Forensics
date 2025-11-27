@@ -119,15 +119,9 @@ git clone https://github.com/y2git/ICT3215-Digital-Forensics.git
 cd ICT3215-Digital-Forensics
 
 # 2. Create a virtual environment
-# On macOS / Linux:
-python3 -m venv .venv
-# On Windows:
 python -m venv .venv
 
 # 3. Activate the virtual environment
-# On macOS / Linux:
-source .venv/bin/activate
-# On Windows:
 .venv\Scripts\activate 
 
 
