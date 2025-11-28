@@ -51,8 +51,10 @@ This ensures any alteration becomes detectable, supporting secure chain-of-custo
 
 ## System Architecture
 
-<INSERT LATER>
-  
+<img width="221" height="455" alt="image" src="https://github.com/user-attachments/assets/9e7c0b6c-e0fa-4805-8187-6a477d552995" />
+
+---
+
 ```
 U-See-Bus/
 │
@@ -95,8 +97,8 @@ U-See-Bus/
 │ • Builds a harmless USB test executable (PyInstaller)
 │
 └── usb-reports/
-├── usb-sessions/ - session JSON logs
-└── final-digest/ - digest summaries
+        ├── usb-sessions/ - session JSON logs
+        └── final-digest/ - digest summaries
 ```
 
 
@@ -175,7 +177,7 @@ python main.py --verify path/to/final_digest_<timestamp>.json
 
 ## Output
 
-Session Log (usb_session_<timestamp>.json)
+Session Log (usb_session_[timestamp].json)
 
 Contains:
 ```bash
@@ -184,33 +186,29 @@ Contains:
 • Executable events
 • Full hash chain
 ```
-<INSERT usb_session SCREENSHOTS>
+<img width="858" height="625" alt="image" src="https://github.com/user-attachments/assets/524f9cf0-f0f1-4524-947a-fffae5d7cbe6" />
 
 
-
-Event log with file & process activity and hash chain
-Contains
-```bash
-<TEMPLATE>
-```
-<INSERT final_digest SCREENSHOTS>
-
-
-
-Final Digest (final_digest_<timestamp>.json)
+Final Digest (final_digest_[timestamp].json)
 Final digest used for verification with USB_session file's SHA256 hash and with final chain hash
+Contains:
+```bash
+• Number of events that occurred and what they are
+• File path to the respective session log
+• The final hash of the session log when final digest was generated
 
-<INSERT usb_reports folder SCREENSHOTS>
+```
+<img width="897" height="447" alt="image" src="https://github.com/user-attachments/assets/c0b8e58e-a4f0-4fd4-8242-1f0bfb92b15c" />
+
+
 
 Root directory for generated files that holds the sub-folders (IDK TO REMOVE OR NOT)
 Contains:
 ```bash
-• SHA-256 hash of session file
-• Final chain hash
-• Total event count
-•Metadata summary
+• usb_session folder
+• final_digest folder
 ```
-<INSERT usb_session SCREENSHOTS>
+<img width="218" height="145" alt="image" src="https://github.com/user-attachments/assets/02454149-f755-47c1-b8a7-d539eec67d74" />
 
 
 Output Directory Structure
@@ -228,7 +226,7 @@ usb-reports/
 ---
 
 ## Verification
-
+### Detect if reports were modified
 U-See Bus supports offline validation of evidence integrity
 
 When executed with the session JSON file, it recomputes every link in the chain and checks the hash for any changes.
@@ -237,19 +235,33 @@ When executed with with the final digest JSON file, it compares the session_sha2
 
 If there is no tampering detected in session JSON:
 
-<INSERT SCREENSHOT OF SUCCESSFUL FOR SESSION>
+<img width="1189" height="240" alt="image" src="https://github.com/user-attachments/assets/423a3afc-2a80-4f8c-8957-04dac80a8866" />
+
 
 If there is no tampering detected in final digest JSON:
 
-<INSERT SCREENSHOT OF SUCCESSFUL FOR FINAL DIGEST>
+<img width="1150" height="334" alt="image" src="https://github.com/user-attachments/assets/f35f9bdb-d8a9-4b75-a81f-1443f2be208a" />
+
 
 If there is tampering detected in session JSON:
 
-<INSERT SCREENSHOT OF UNSUCCESSFUL FOR SESSION>
+<img width="1169" height="212" alt="image" src="https://github.com/user-attachments/assets/247c194e-157f-4bcc-9d5d-1f8c71c00354" />
+
 
 If there is tampering detected in final digest JSON:
 
-<INSERT SCREENSHOT OF UNSUCCESSFUL FOR FINAL DIGEST>
+<img width="1165" height="287" alt="image" src="https://github.com/user-attachments/assets/c8d59ebd-b165-4342-bea6-be00a4c75f97" />
+
+### Detect if U-See Bus was stopped unnaturally
+U-See Bus has a feature to detect if it was terminated in an unintended manner. When U-See Bus is executed a ".running" file will be generated and it will be deleted only when it is terminated gracefully with CTRL+C
+
+<img width="208" height="152" alt="image" src="https://github.com/user-attachments/assets/f17d2f5e-03a1-4b55-ae30-7e8e6cb6fc9c" />
+
+In the case that U-See Bus was not terminated in the intended manner, ".running" will remain in the folder and it will trigger an alert and a unique final digest file generation the next time it is run.
+<img width="1416" height="650" alt="image" src="https://github.com/user-attachments/assets/489d0d7e-f218-4b79-926b-775b1f8001f5" />
+
+Within the final_digest_unclean_[timestamp].json, it contains the similar values to the normal final digest except the information regarding events that had taken place and instead it has a "note" section
+<img width="987" height="287" alt="image" src="https://github.com/user-attachments/assets/0b9195e2-c560-4248-830e-67b144c55988" />
 
 ---
 
