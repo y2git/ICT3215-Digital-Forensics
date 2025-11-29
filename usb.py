@@ -181,8 +181,8 @@ def start_usb_monitor_thread(q, observers, chain, last, stop_event, exec_events,
             if not is_usb_thumbdrive(device[:2]):
                 print(f"[!] Ignored NON-USB THUMBDRIVE device at {device}")
                 return
-            
-            create_usb_observer(device, q, observers, chain, last, monitor_usb, stop_event, exec_events)
+            if monitor_usb:
+                create_usb_observer(device, q, observers, chain, last, monitor_usb, stop_event, exec_events)
         
         elif action == "removed": # remove observer when USB is removed
             remove_usb_observer(device, observers, chain, last)

@@ -48,7 +48,7 @@ def main():
     print(f"\n[+] Suspending PID {target.pid} (main.py)...")
     target.suspend()
 
-    freeze_time = 10
+    freeze_time = 6
     print(f"[+] Process suspended for {freeze_time} seconds...")
     time.sleep(freeze_time)
 
