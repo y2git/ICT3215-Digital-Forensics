@@ -52,6 +52,30 @@ def main():
     if args.verify:
         data = json.loads(Path(args.verify).read_text()) # load the JSON selected for verification
         
+        # if it is forced digest detection
+        if isinstance(data, dict) and data.get("reason") == "runtime_freeze_detected": # check for freeze reason key
+            print("[*] Forced digest detected (runtime freeze snapshot).")
+
+            # Verify only the session file hash
+            session_path = Path(data["session_path"])
+            if not session_path.exists():
+                print(f"[!] Session file not found: {session_path}")
+                sys.exit(1)
+
+            expected_sha = file_sha256(session_path)
+            print(f"[*] Session SHA256 expected: {expected_sha}") # compute expected sha256
+            print(f"[*] Session SHA256 actual:   {data['session_sha256']}") # print actual sha256 from digest
+
+            # Compare the hashes
+            if expected_sha != data["session_sha256"]:
+                print("[!] Session hash mismatch. Forced digest snapshot does not match session file.")
+                sys.exit(1)
+
+            # If all checks pass
+            print("[✓] Forced digest snapshot verified successfully.")
+            print("[!] No chain verification is performed for tamper snapshots.")
+            sys.exit(0)
+
         # if it is session JSON
         if isinstance(data, dict) and "chain" in data:
             verify_chain(data["chain"])  # verify only the chain list

@@ -1,4 +1,5 @@
 import os, json, queue, threading,psutil
+import time
 from pathlib import Path
 from watchdog.observers import Observer
 
@@ -14,6 +15,93 @@ from chain import verify_chain
 # We import startup recovery helpers later
 from recovery import startup_recovery_check, create_running_marker, remove_running_marker
 
+# Heartbeat watchdog to detect runtime freezes
+def heartbeat_watchdog(stop_event, chain, last_hash_ref, session_path, file_events, exec_events, digest_dir, base_dir):
+    
+    # Initialize the last beat time
+    last_beat = [time.time()]
+
+    # Define the tick function to update the last beat time
+    def heartbeat_tick():
+        last_beat[0] = time.time()
+
+    # Assign the tick function to the watchdog
+    heartbeat_watchdog.tick = heartbeat_tick
+
+    # Monitor for freezes
+    while not stop_event.is_set():  
+        time.sleep(2)
+
+        # Check if more than 5 seconds have passed since the last beat
+        if time.time() - last_beat[0] > 5:
+            print("[!] Runtime freeze detected — stopping all threads immediately")
+
+            # stop main loop
+            stop_event.set()
+
+            # stop all observers
+            try:
+                # stop all watchdog observers
+                for obs in list(threading.enumerate()):
+                    # check if thread is an Observer
+                    if isinstance(obs, Observer):
+                        obs.stop()
+                        obs.join()
+            except:
+                pass # ignore errors
+            
+            # stop exec thread if running
+            try:
+                # wait for all other threads to finish
+                for t in threading.enumerate(): # iterate all threads
+                    # skip main thread and watchdog thread
+                    if t.name.startswith("Thread") or "exec" in t.name.lower():
+                        t.join(timeout=0.2) # wait 0.2 seconds for thread to finish
+            except:
+                pass
+
+            # add tamper entry
+            tamper_entry = ChainEntry.create(
+                "runtime_freeze_detected", # indicate freeze reason
+                {"msg": "main loop inactive for >5s"},
+                last_hash_ref[0]
+            )
+            # Append tamper entry to chain
+            chain.append(asdict(tamper_entry))
+            last_hash_ref[0] = tamper_entry.hash
+
+            # write frozen session file
+            session_data = {
+                "timestamp": now_sgt_iso(),
+                "file_events": file_events,
+                "exec_events": exec_events,
+                "chain": chain
+            }
+            atomic_write_json(session_path, session_data)
+
+            # compute session hash AFTER freezing all threads
+            frozen_hash = file_sha256(session_path)
+
+            # write forced digest
+            digest = {
+                "tool": "U-See_Bus",
+                "version": "1.0",
+                "timestamp": now_sgt_iso(),
+                "session_path": str(session_path), # path to frozen session
+                "session_sha256": frozen_hash, # frozen session hash
+                "reason": "runtime_freeze_detected" # indicate freeze reason
+            }
+
+            digest_path = Path(base_dir) / digest_dir / f"forced_digest_{now_sgt_str()}.json"
+            atomic_write_json(digest_path, digest)
+
+            print(f"[✓] Forced digest written: {digest_path}")
+            print("[✓] Session frozen at tamper moment.")
+
+            RUN_MARKER = Path(base_dir) / ".running"
+            remove_running_marker(RUN_MARKER)
+
+            os._exit(1)
 
 # .exe monitoring from USB
 def track_exec_from_usb(mount: str, stop_event: threading.Event, collector: List[ExecEvent], chain: List[ChainEntry], last_ref: List[str]):
@@ -107,11 +195,18 @@ def run_monitor(local_paths: List[str], usb_mount: str, out_dir: list, monitor_u
         previous_hash[0]=chain_entry.hash
 
         stop_event = threading.Event()
+        
+        # Start USB .exe tracking thread
         track_exec_thread = threading.Thread(target=track_exec_from_usb, args=(usb_mount, stop_event, exec_events, chain, previous_hash), daemon=True)
         track_exec_thread.start()
+        
+        # Start heartbeat watchdog thread
+        watchdog_thread = threading.Thread(target=heartbeat_watchdog, args=(stop_event, chain, previous_hash, session_path, file_events, exec_events, digest_dir, base_dir), daemon=True)
+        watchdog_thread.start()
 
     try:
         while True:
+            heartbeat_watchdog.tick()  # tick the heartbeat watchdog
             try:
                 event=q.get(timeout=0.5)
                 file_events.append(asdict(event))
