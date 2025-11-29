@@ -10,6 +10,7 @@ from dataclasses import asdict
 
 import subprocess
 
+
 def is_usb_thumbdrive(drive_letter: str):
 
     try:
@@ -66,6 +67,12 @@ def is_real_usb_drive(path: str):
         return drive_type == 2
     except Exception:
         return False
+    
+
+def is_external_usb_storage(drive_letter: str):
+    if is_real_usb_drive(device) and not is_usb_thumbdrive(device[:2]):
+        return True
+    return False
 
 # Get USB Info (Windows)
 def get_usb_device_info(drive_letter: str):
@@ -164,6 +171,7 @@ def remove_usb_observer(device, observers, chain, last):
 
 # Start USB monitor thread
 def start_usb_monitor_thread(q, observers, chain, last, stop_event, exec_events, monitor_usb=True):
+    startup_detected = set()
 
     # USB insertion/removal callback
     def usb_callback(device, action):
@@ -178,6 +186,10 @@ def start_usb_monitor_thread(q, observers, chain, last, stop_event, exec_events,
                 print(f"[!] Ignored NON-USB THUMBDRIVE device at {device}")
                 return
             
+            if device in startup_detected:
+                startup_detected.remove(device)  # clear once
+                return     
+            
             create_usb_observer(device, q, observers, chain, last, monitor_usb, stop_event, exec_events)
         #if action == "inserted": # create observer when USB is inserted
            # create_usb_observer(device, q, observers, chain, last, monitor_usb, stop_event, exec_events)
@@ -187,18 +199,17 @@ def start_usb_monitor_thread(q, observers, chain, last, stop_event, exec_events,
             
     for p in psutil.disk_partitions(all=False):
         mount = p.device
-
-        # Is it a removable USB device at all?
-        if is_real_usb_drive(mount):
-
-            # Case 1: It *is* a USB thumbdrive
-            if is_usb_thumbdrive(mount[:2]):
-                print(f"[!] Existing USB thumbdrive found at startup: {mount}")
-                usb_callback(mount, "inserted")
-
-             # Case 2: It is removable USB storage but NOT a thumbdrive (SSD/HDD/etc.)
-            else:
-                print(f"[!] External USB storage detected at startup: {mount} (NOT a thumbdrive — ignored)")
+        
+        # Case 1: USB thumbdrive
+        if is_real_usb_drive(mount) and is_usb_thumbdrive(mount[:2]):
+            print(f"[!] Existing USB thumbdrive found at startup: {mount}")
+            usb_callback(mount, "inserted")
+            continue
+        
+        # Case 2: External USB storage (HDD/SSD/enclosure)
+        if is_external_usb_storage(mount):
+            print(f"[!] External USB storage detected at startup: {mount} (NOT a thumbdrive — ignored)")
+            continue
         
     #if monitor_usb:
     threading.Thread(target=monitor_usb_insertion, args=(usb_callback,), daemon=True).start() # start monitoring in a separate thread
