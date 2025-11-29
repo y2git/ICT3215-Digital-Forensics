@@ -23,6 +23,11 @@ class EventCollector(FileSystemEventHandler):
         self.label = label
 
     def on_created(self, e):
+        if e.is_directory:
+            event = FileEvent(now_sgt_iso(), "directory_created", e.src_path, None, None, self.label)
+            self.q.put(event)
+            print(f"[+] {self.label}: Directory created → {e.src_path}")
+            return
         if not e.is_directory:
             # Check for move: same filename deleted moments ago
             basename = os.path.basename(e.src_path)
@@ -72,6 +77,11 @@ class EventCollector(FileSystemEventHandler):
             print(f"[*] {self.label}: {e.src_path} {action}") # print modification event
 
     def on_deleted(self, e):
+        if e.is_directory:
+            event = FileEvent(now_sgt_iso(), "directory_deleted", e.src_path, None, None, self.label)
+            self.q.put(event)
+            print(f"[-] {self.label}: Directory deleted → {e.src_path}")
+            return
         if not e.is_directory:
             with dict_lock:
                 recent_deleted[e.src_path] = time.time() # record the deletion time
@@ -82,6 +92,12 @@ class EventCollector(FileSystemEventHandler):
             print(f"[-] {self.label}: {e.src_path} deleted") # print deletion event
 
     def on_moved(self, e):
+        if e.is_directory:
+            event = FileEvent(now_sgt_iso(), "directory_moved", e.src_path, e.dest_path, None, self.label)
+            self.q.put(event)
+            print(f"[→] {self.label}: Directory moved {e.src_path} → {e.dest_path}")
+            return
+
         if not e.is_directory:
             dest = getattr(e, "dest_path", e.src_path)
             h = file_sha256(dest) # get the sha256 hash of moved file
