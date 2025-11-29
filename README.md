@@ -263,6 +263,16 @@ In the case that U-See Bus was not terminated in the intended manner, ".running"
 Within the final_digest_unclean_[timestamp].json, it contains the similar values to the normal final digest except the information regarding events that had taken place and instead it has a "note" section
 <img width="987" height="287" alt="image" src="https://github.com/user-attachments/assets/0b9195e2-c560-4248-830e-67b144c55988" />
 
+### Detect if U-See Bus was frozen during execution
+U-See Bus has a feature to detect if it becomes unresponsive during monitoring; when a runtime freeze is detected, it records a "runtime_freeze_detected" event and generates a forced_digest_[timestamp].json snapshot.  
+<img width="507" height="262" alt="image" src="https://github.com/user-attachments/assets/efe0dbec-4bf8-4d3d-b60f-0d9fb3e7849b" />
+
+In the case that U-See Bus becomes frozen, a "runtime_freeze_detected" entry is added to the chain and a forced digest is created to show the state of the session at the freeze moment.  
+<img width="507" height="133" alt="image" src="https://github.com/user-attachments/assets/9728d5eb-1ce6-489f-ba2c-b446ebd8bc77" />
+
+Forced digest verification compares the stored session_sha256 with the current hash of the session file to determine if the session was modified after the freeze event.  
+<img width="507" height="132" alt="image" src="https://github.com/user-attachments/assets/37dbe0ca-8056-4939-926b-61a7310dc852" />
+
 ---
 
 ## Limitations
