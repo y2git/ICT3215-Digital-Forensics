@@ -7,7 +7,7 @@ from dataclasses import asdict
 from typing import List
 
 from events import EventCollector
-from usb import start_usb_monitor_thread, get_usb_device_info
+from usb import start_usb_monitor_thread, get_usb_device_info, is_real_usb_drive, is_usb_thumbdrive
 from models import ChainEntry, ExecEvent, FileEvent
 from utils import now_sgt_iso, now_sgt_str, file_sha256, atomic_write_json
 from chain import verify_chain
@@ -30,7 +30,7 @@ def heartbeat_watchdog(stop_event, chain, last_hash_ref, session_path, file_even
 
     # Monitor for freezes
     while not stop_event.is_set():  
-        time.sleep(2)
+        time.sleep(2) #
 
         # Check if more than 5 seconds have passed since the last beat
         if time.time() - last_beat[0] > 5:
@@ -181,24 +181,27 @@ def run_monitor(local_paths: List[str], usb_mount: str, out_dir: list, monitor_u
     watchdog_thread = threading.Thread(target=heartbeat_watchdog, args=(stop_event, chain, previous_hash, session_path, file_events, exec_events, digest_dir, base_dir), daemon=True)
     watchdog_thread.start()
     if monitor_usb and os.path.exists(usb_mount):
-        obs_usb = Observer()
-        obs_usb.schedule(EventCollector(q,"USB"),usb_mount,recursive=True)
-        obs_usb.start()
-        observers.append(obs_usb)
-        print(f"[+] USB device detected and monitored: {usb_mount} here")
+        if not is_real_usb_drive(usb_mount) or not is_usb_thumbdrive(usb_mount[:2]):
+            print(f"[!] Ignored NON-USB device at {usb_mount} (not removable USB thumbdrive or is external storage or is internal storage)")
+        else:
+            obs_usb = Observer()
+            obs_usb.schedule(EventCollector(q,"USB"),usb_mount,recursive=True)
+            obs_usb.start()
+            observers.append(obs_usb)
+            print(f"[+] USB device detected and monitored: {usb_mount} here")
         
-        usb_info=get_usb_device_info(usb_mount[:2])
-        print(json.dumps(usb_info,indent=2))
+            usb_info=get_usb_device_info(usb_mount[:2])
+            print(json.dumps(usb_info,indent=2))
 
-        chain_entry=ChainEntry.create("usb_info", usb_info, previous_hash[0])
-        chain.append(asdict(chain_entry))
-        previous_hash[0]=chain_entry.hash
+            chain_entry=ChainEntry.create("usb_info", usb_info, previous_hash[0])
+            chain.append(asdict(chain_entry))
+            previous_hash[0]=chain_entry.hash
 
-        stop_event = threading.Event()
+            stop_event = threading.Event()
         
-        # Start USB .exe tracking thread
-        track_exec_thread = threading.Thread(target=track_exec_from_usb, args=(usb_mount, stop_event, exec_events, chain, previous_hash), daemon=True)
-        track_exec_thread.start()
+            # Start USB .exe tracking thread
+            track_exec_thread = threading.Thread(target=track_exec_from_usb, args=(usb_mount, stop_event, exec_events, chain, previous_hash), daemon=True)
+            track_exec_thread.start()
 
     try:
         while True:

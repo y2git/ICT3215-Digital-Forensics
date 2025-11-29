@@ -1,11 +1,75 @@
-import psutil, subprocess, time, os, json, threading
+import psutil, subprocess, time, os, json, threading, ctypes
 from pathlib import Path
+from torch import device
 from watchdog.observers import Observer
 
 from events import EventCollector
 from models import ChainEntry
 from utils import now_sgt_iso, atomic_write_json
 from dataclasses import asdict
+
+import subprocess
+
+def is_usb_thumbdrive(drive_letter: str):
+
+    try:
+        # Query diskdrive info associated with this drive letter
+        wmic_cmd = [
+            "wmic", "diskdrive", "where",
+            "InterfaceType='USB'",
+            "get", "Model,MediaType,PNPDeviceID", "/format:list"
+        ]
+        result = subprocess.run(wmic_cmd, capture_output=True, text=True).stdout
+
+        model = None
+        mediatype = None
+        pnp = None
+
+        for line in result.splitlines():
+            if line.startswith("Model="):
+                model = line.split("=", 1)[1].strip().lower()
+            elif line.startswith("MediaType="):
+                mediatype = line.split("=", 1)[1].strip().lower()
+            elif line.startswith("PNPDeviceID="):
+                pnp = line.split("=", 1)[1].strip().lower()
+
+        # Must exist
+        if not pnp:
+            return False
+        
+        # Must be USB storage
+        if "usbstor" not in pnp:
+            return False
+
+        # Reject external HDD / SSD
+        bad_keywords = [
+            "ssd", "solid state", "nvme",
+            "portable ssd", "external", "hard disk"
+        ]
+        if model and any(x in model for x in bad_keywords):
+            return False
+
+        # Only allow true removable media
+        if mediatype and "removable" not in mediatype:
+            return False
+
+        return True
+
+    except Exception:
+        return False
+
+def is_real_usb_drive(path: str):
+    try:
+        # Windows API: GetDriveTypeW(path)
+        # 2 = removable drive
+        drive_type = ctypes.windll.kernel32.GetDriveTypeW(path)
+        return drive_type == 2
+    except Exception:
+        return False
+
+def is_external_usb_storage(device: str):
+    return is_real_usb_drive(device) and not is_usb_thumbdrive(device[:2])
+   
 
 # Get USB Info (Windows)
 def get_usb_device_info(drive_letter: str):
@@ -107,10 +171,34 @@ def start_usb_monitor_thread(q, observers, chain, last, stop_event, exec_events,
 
     # USB insertion/removal callback
     def usb_callback(device, action):
-        print(f"[USB] Device {device} {action.upper()} at {now_sgt_iso()}") # log the event
-        if action == "inserted": # create observer when USB is inserted
-            create_usb_observer(device, q, observers, chain, last, monitor_usb, stop_event, exec_events)
+        print(f"[!] Device {device} {action.upper()} at {now_sgt_iso()}") # log the event
+        if action == "inserted":
+            # Reject non-removable drives (HDD, SSD, NVMe)
+            if not is_real_usb_drive(device):
+                print(f"[!] Ignored NON-USB device at {device} (not removable USB thumbdrive or is external storage or is internal storage)")
+                return
+            
+            if not is_usb_thumbdrive(device[:2]):
+                print(f"[!] Ignored NON-USB THUMBDRIVE device at {device}")
+                return
+            if monitor_usb:
+                create_usb_observer(device, q, observers, chain, last, monitor_usb, stop_event, exec_events)
+        
         elif action == "removed": # remove observer when USB is removed
             remove_usb_observer(device, observers, chain, last)
+            
+    for p in psutil.disk_partitions(all=False):
+        mount = p.device
+
+        # Is it a removable USB device at all?
+        if is_real_usb_drive(mount):
+
+            # Case 1: It *is* a USB thumbdrive
+            if is_usb_thumbdrive(mount[:2]):
+                print(f"[!] Existing USB thumbdrive found at startup: {mount}")
+
+            elif is_external_usb_storage(mount):
+                print(f"[!] External USB storage detected at startup: {mount} (NOT a thumbdrive — ignored)")
+        
     #if monitor_usb:
     threading.Thread(target=monitor_usb_insertion, args=(usb_callback,), daemon=True).start() # start monitoring in a separate thread
