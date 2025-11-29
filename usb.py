@@ -11,8 +11,6 @@ from dataclasses import asdict
 import subprocess
 
 startup_seen_devices = set()
-usb_observer_already_created = set()
-
 
 def is_usb_thumbdrive(drive_letter: str):
 
@@ -126,10 +124,6 @@ def monitor_usb_insertion(callback):
 
 # Create USB observer
 def create_usb_observer(device, q, observers, chain, last, monitor_usb, stop_event, exec_events):
-    if device in usb_observer_already_created:
-        return
-    usb_observer_already_created.add(device)
-
     # Sometimes Windows takes a second to mount the path
     for _ in range(5):
         if os.path.exists(device):
