@@ -67,6 +67,10 @@ def is_real_usb_drive(path: str):
     except Exception:
         return False
 
+def is_external_usb_storage(device: str):
+    return is_real_usb_drive(device) and not is_usb_thumbdrive(device[:2])
+   
+
 # Get USB Info (Windows)
 def get_usb_device_info(drive_letter: str):
     info = {"mount": drive_letter, "volume_label": None, "serial_number": None, "pnp_id": None} # default info
@@ -196,8 +200,7 @@ def start_usb_monitor_thread(q, observers, chain, last, stop_event, exec_events,
                 print(f"[!] Existing USB thumbdrive found at startup: {mount}")
                 usb_callback(mount, "inserted")
 
-             # Case 2: It is removable USB storage but NOT a thumbdrive (SSD/HDD/etc.)
-            else:
+            elif is_external_usb_storage(mount):
                 print(f"[!] External USB storage detected at startup: {mount} (NOT a thumbdrive — ignored)")
         
     #if monitor_usb:
