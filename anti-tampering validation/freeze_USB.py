@@ -2,67 +2,50 @@ import psutil
 import time
 import os
 
-# Find U-See Bus python process by inspecting command line arguments
-def find_useebus_process(): 
-    current_pid = os.getpid() # get current script PID to avoid self-matching
-    candidates = []
-
-    # Scan all processes
-    for p in psutil.process_iter(['pid', 'name', 'cmdline']):
+def find_main_process():
+    # Scan all processes to find one running main.py
+    for p in psutil.process_iter(["pid", "name", "cmdline"]):
         try:
-            # Filter for python processes
-            if p.info['name'] and "python" in p.info['name'].lower():
-                if p.pid == current_pid:
-                    continue  # skip this script itself
-                
-                # Check for U-See Bus indicators in command line
-                cmd = " ".join(p.info.get('cmdline') or [])
-                # Look for main.py or U-See or ICT3215 in command line
-                if "main.py" in cmd or "U-See" in cmd or "ICT3215" in cmd:
-                    candidates.append(p)
-        
-        # Handle processes that may have terminated or are inaccessible
+            # Check command line for main.py
+            cmd = p.info.get("cmdline") or []
+            if any("main.py" in arg.lower() for arg in cmd):
+                return p
+        # Handle processes that may have terminated or are inaccessible    
         except (psutil.NoSuchProcess, psutil.AccessDenied):
-            continue # skip to next process
-    # Return list of candidate processes
-    return candidates
+            pass
+    return None
 
-# Main function to suspend and resume U-See Bus process
+# Main function to suspend and resume U-See Bus main.py process
 def main():
-    # Find U-See Bus python processes
-    targets = find_useebus_process()
-    
-    # If none found, inform user and exit
-    if not targets:
-        print("[!] No U-See Bus python process found.")
-        print("    Make sure U-See Bus is running before running this script.")
-        return
+    # Wait for U-See Bus main.py process to start
+    print("[*] Waiting for U-See Bus (main.py) to start...")
 
-    # Display found processes
-    print("[+] Found the following U-See Bus Python processes:")
-    for p in targets:
-        print(f"    PID {p.pid}   CMD: {' '.join(p.info.get('cmdline') or [])}")
+    target = None
+    # Wait until the main.py process is found
+    while target is None:
+        target = find_main_process()
+        time.sleep(0.5)
 
-    # Pick the first candidate (usually the correct one)
-    p = targets[0]
+    # Display found process
+    print(f"[+] Found U-See Bus main process: PID {target.pid}")
+    print(f"    CMD: {' '.join(target.info.get('cmdline') or [])}")
 
-    print(f"\n[+] Suspending PID {p.pid}...")
-    
+    # Give some time before suspending
+    time.sleep(1)
+
     # Suspend the process to simulate freeze
-    p.suspend()
+    print(f"[+] Suspending PID {target.pid}...")
+    target.suspend()
 
     # Keep the process suspended for a duration
-    freeze_time = 10  # seconds
+    freeze_time = 10 # seconds
     print(f"[+] Process suspended for {freeze_time} seconds...")
-    
-    # Wait for the freeze duration
     time.sleep(freeze_time)
 
-    # Resume the suspended process
     print("[+] Resuming process...")
-    p.resume()
-    
-    print("[✓] Test complete. U-See Bus should have terminated.")
+    target.resume()
+
+    print("[✓] Freeze test completed. U-See Bus should have terminated.")
 
 
 if __name__ == "__main__":
