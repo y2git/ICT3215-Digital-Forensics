@@ -206,7 +206,10 @@ def run_monitor(local_paths: List[str], usb_mount: str, out_dir: list, monitor_u
 
     try:
         while True:
-            heartbeat_watchdog.tick()  # tick the heartbeat watchdog
+            # Tick the heartbeat watchdog if USB monitoring is enabled
+            if monitor_usb and os.path.exists(usb_mount):
+                heartbeat_watchdog.tick() # update heartbeat
+            
             try:
                 event=q.get(timeout=0.5)
                 file_events.append(asdict(event))
