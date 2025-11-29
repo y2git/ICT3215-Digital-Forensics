@@ -1,4 +1,4 @@
-# ICT3215-Digital-Forensics-GonezCase
+# ICT3215-U-See_Bus
 
 U-See Bus is a Python script that is used to detect the insertion and removal of USB thumbdrives and to detect changes made to files within the folders it is monitoring (Downloads, Documents and Desktop by default).  
 
@@ -67,6 +67,7 @@ U-See-Bus/
 │ • Core monitoring engine
 │ • Handles event queue, file/exec events, hash chain updates
 │ • Session & digest creation
+│ • Runtime Freeze Detection
 │
 ├── usb.py
 │ • USB insertion/removal detection via polling
@@ -117,8 +118,8 @@ To install them, follow the steps in **Installation**.
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/y2git/ICT3215-Digital-Forensics.git
-cd ICT3215-Digital-Forensics
+git clone https://github.com/y2git/ICT3215-U-See_Bus.git
+cd ICT3215-U-See_Bus
 
 # 2. Create a virtual environment
 python -m venv .venv
