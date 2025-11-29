@@ -198,7 +198,7 @@ def start_usb_monitor_thread(q, observers, chain, last, stop_event, exec_events,
             # Case 1: It *is* a USB thumbdrive
             if is_usb_thumbdrive(mount[:2]):
                 print(f"[!] Existing USB thumbdrive found at startup: {mount}")
-                usb_callback(mount, "inserted")
+                #usb_callback(mount, "inserted")
 
             elif is_external_usb_storage(mount):
                 print(f"[!] External USB storage detected at startup: {mount} (NOT a thumbdrive — ignored)")
