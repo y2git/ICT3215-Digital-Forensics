@@ -98,9 +98,6 @@ def heartbeat_watchdog(stop_event, chain, last_hash_ref, session_path, file_even
             print(f"[✓] Forced digest written: {digest_path}")
             print("[✓] Session frozen at tamper moment.")
 
-            RUN_MARKER = Path(base_dir) / ".running"
-            remove_running_marker(RUN_MARKER)
-
             os._exit(1)
 
 # .exe monitoring from USB
