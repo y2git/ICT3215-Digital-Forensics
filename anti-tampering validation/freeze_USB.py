@@ -2,50 +2,60 @@ import psutil
 import time
 import os
 
-def find_main_process():
-    # Scan all processes to find one running main.py
+def find_main_py_process():
+    current_pid = os.getpid()  # avoid freezing this script itself
+    matches = []
+
     for p in psutil.process_iter(["pid", "name", "cmdline"]):
         try:
-            # Check command line for main.py
-            cmd = p.info.get("cmdline") or []
-            if any("main.py" in arg.lower() for arg in cmd):
-                return p
-        # Handle processes that may have terminated or are inaccessible    
+            if p.pid == current_pid:
+                continue
+
+            name = (p.info.get("name") or "").lower()
+            if "python" not in name:
+                continue
+
+            cmdline = p.info.get("cmdline") or []
+            for arg in cmdline:
+                # only match if the last path component is exactly "main.py"
+                if os.path.basename(arg).lower() == "main.py":
+                    matches.append(p)
+                    break
+
         except (psutil.NoSuchProcess, psutil.AccessDenied):
-            pass
-    return None
+            continue
 
-# Main function to suspend and resume U-See Bus main.py process
+    return matches
+
+
 def main():
-    # Wait for U-See Bus main.py process to start
-    print("[*] Waiting for U-See Bus (main.py) to start...")
+    print("[*] Looking for python process running main.py...")
 
-    target = None
-    # Wait until the main.py process is found
-    while target is None:
-        target = find_main_process()
-        time.sleep(0.5)
+    procs = find_main_py_process()
 
-    # Display found process
-    print(f"[+] Found U-See Bus main process: PID {target.pid}")
-    print(f"    CMD: {' '.join(target.info.get('cmdline') or [])}")
+    if not procs:
+        print("[!] No python process with main.py found.")
+        print("    Make sure U-See Bus is started with something like: python main.py")
+        return
 
-    # Give some time before suspending
-    time.sleep(1)
+    print("[+] Found the following main.py process(es):")
+    for p in procs:
+        cmd = " ".join(p.info.get("cmdline") or [])
+        print(f"    PID {p.pid}   CMD: {cmd}")
 
-    # Suspend the process to simulate freeze
-    print(f"[+] Suspending PID {target.pid}...")
+    # strictly target the first main.py match
+    target = procs[0]
+    print(f"\n[+] Suspending PID {target.pid} (main.py)...")
     target.suspend()
 
-    # Keep the process suspended for a duration
-    freeze_time = 10 # seconds
+    freeze_time = 10
     print(f"[+] Process suspended for {freeze_time} seconds...")
     time.sleep(freeze_time)
 
     print("[+] Resuming process...")
     target.resume()
 
-    print("[✓] Freeze test completed. U-See Bus should have terminated.")
+    print("[✓] Freeze test complete. If the watchdog is working, U-See Bus should have written a forced digest and exited.")
 
 
 if __name__ == "__main__":
