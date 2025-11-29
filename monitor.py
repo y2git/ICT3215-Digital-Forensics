@@ -179,14 +179,16 @@ def run_monitor(local_paths: List[str], usb_mount: str, out_dir: list, monitor_u
     # Start USB observer if enabled
     obs_usb = None
     usb_observers_map = {}  # MUST have map for start_usb_monitor_thread
-    start_usb_monitor_thread(q, usb_observers_map, chain, previous_hash, monitor_usb)
-    usb_ready = any(p.device.lower().startswith(usb_mount.lower()) for p in psutil.disk_partitions(all=False))
-    if monitor_usb and usb_ready:
+    stop_event = threading.Event()
+    start_usb_monitor_thread(q, usb_observers_map, chain, previous_hash, stop_event, exec_events, monitor_usb)
+    watchdog_thread = threading.Thread(target=heartbeat_watchdog, args=(stop_event, chain, previous_hash, session_path, file_events, exec_events, digest_dir, base_dir), daemon=True)
+    watchdog_thread.start()
+    if monitor_usb and os.path.exists(usb_mount):
         obs_usb = Observer()
         obs_usb.schedule(EventCollector(q,"USB"),usb_mount,recursive=True)
         obs_usb.start()
         observers.append(obs_usb)
-        print(f"[+] USB device detected and monitored: {usb_mount}")
+        print(f"[+] USB device detected and monitored: {usb_mount} here")
         
         usb_info=get_usb_device_info(usb_mount[:2])
         print(json.dumps(usb_info,indent=2))
@@ -200,10 +202,6 @@ def run_monitor(local_paths: List[str], usb_mount: str, out_dir: list, monitor_u
         # Start USB .exe tracking thread
         track_exec_thread = threading.Thread(target=track_exec_from_usb, args=(usb_mount, stop_event, exec_events, chain, previous_hash), daemon=True)
         track_exec_thread.start()
-        
-        # Start heartbeat watchdog thread
-        watchdog_thread = threading.Thread(target=heartbeat_watchdog, args=(stop_event, chain, previous_hash, session_path, file_events, exec_events, digest_dir, base_dir), daemon=True)
-        watchdog_thread.start()
 
     try:
         while True:

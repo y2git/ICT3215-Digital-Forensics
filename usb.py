@@ -55,7 +55,7 @@ def monitor_usb_insertion(callback):
 
 
 # Create USB observer
-def create_usb_observer(device, q, observers, chain, last, monitor_usb):
+def create_usb_observer(device, q, observers, chain, last, monitor_usb, stop_event, exec_events):
     # Sometimes Windows takes a second to mount the path
     for _ in range(5):
         if os.path.exists(device):
@@ -71,6 +71,7 @@ def create_usb_observer(device, q, observers, chain, last, monitor_usb):
         obs_usb.schedule(EventCollector(q, "USB"), device, recursive=True)
         obs_usb.start()
         observers[device] = obs_usb  # store by drive letter
+        
     print(f"[+] USB device detected and monitored: {device}")
 
     # Log USB device info
@@ -81,6 +82,10 @@ def create_usb_observer(device, q, observers, chain, last, monitor_usb):
     chain_entry = ChainEntry.create("usb_inserted", usb_info, last[0])
     chain.append(asdict(chain_entry))
     last[0] = chain_entry.hash
+    # Start USB .exe tracking thread
+    from monitor import track_exec_from_usb
+    track_exec_thread = threading.Thread(target=track_exec_from_usb, args=(device, stop_event, exec_events, chain, last), daemon=True)
+    track_exec_thread.start()
 
 
 # Remove USB observer
@@ -98,15 +103,13 @@ def remove_usb_observer(device, observers, chain, last):
 
 
 # Start USB monitor thread
-def start_usb_monitor_thread(q, observers, chain, last, monitor_usb=True):
-    #if not monitor_usb:
-        #return  # USB monitoring disabled
+def start_usb_monitor_thread(q, observers, chain, last, stop_event, exec_events, monitor_usb=True):
 
     # USB insertion/removal callback
     def usb_callback(device, action):
         print(f"[USB] Device {device} {action.upper()} at {now_sgt_iso()}") # log the event
         if action == "inserted": # create observer when USB is inserted
-            create_usb_observer(device, q, observers, chain, last, monitor_usb)
+            create_usb_observer(device, q, observers, chain, last, monitor_usb, stop_event, exec_events)
         elif action == "removed": # remove observer when USB is removed
             remove_usb_observer(device, observers, chain, last)
     #if monitor_usb:
