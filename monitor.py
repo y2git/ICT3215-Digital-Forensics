@@ -180,7 +180,8 @@ def run_monitor(local_paths: List[str], usb_mount: str, out_dir: list, monitor_u
     obs_usb = None
     usb_observers_map = {}  # MUST have map for start_usb_monitor_thread
     start_usb_monitor_thread(q, usb_observers_map, chain, previous_hash, monitor_usb)
-    if monitor_usb and os.path.exists(usb_mount):
+    usb_ready = any(p.device.lower().startswith(usb_mount.lower()) for p in psutil.disk_partitions(all=False))
+    if monitor_usb and usb_ready:
         obs_usb = Observer()
         obs_usb.schedule(EventCollector(q,"USB"),usb_mount,recursive=True)
         obs_usb.start()
@@ -206,10 +207,9 @@ def run_monitor(local_paths: List[str], usb_mount: str, out_dir: list, monitor_u
 
     try:
         while True:
-            # Tick the heartbeat watchdog if USB monitoring is enabled
-            if monitor_usb and os.path.exists(usb_mount):
-                heartbeat_watchdog.tick() # update heartbeat
-            
+            # Heartbeat tick
+            if hasattr(heartbeat_watchdog, "tick"):
+                heartbeat_watchdog.tick()
             try:
                 event=q.get(timeout=0.5)
                 file_events.append(asdict(event))
