@@ -10,7 +10,6 @@ from dataclasses import asdict
 
 import subprocess
 
-startup_seen_devices = set()
 
 def is_usb_thumbdrive(drive_letter: str):
 
@@ -172,7 +171,8 @@ def remove_usb_observer(device, observers, chain, last):
 
 # Start USB monitor thread
 def start_usb_monitor_thread(q, observers, chain, last, stop_event, exec_events, monitor_usb=True):
-    
+    startup_detected = set()
+
     # USB insertion/removal callback
     def usb_callback(device, action):
         print(f"[!] Device {device} {action.upper()} at {now_sgt_iso()}") # log the event
@@ -186,11 +186,9 @@ def start_usb_monitor_thread(q, observers, chain, last, stop_event, exec_events,
                 print(f"[!] Ignored NON-USB THUMBDRIVE device at {device}")
                 return
             
-            # Skip duplicates caused by startup + monitor.py firing
-            if device in startup_seen_devices:
-            # Clear it after first skip to allow fresh detection later
-                startup_seen_devices.remove(device)
-                return    
+            if device in startup_detected:
+                startup_detected.remove(device)  # clear once
+                return     
             
             create_usb_observer(device, q, observers, chain, last, monitor_usb, stop_event, exec_events)
         #if action == "inserted": # create observer when USB is inserted
