@@ -30,7 +30,7 @@ def heartbeat_watchdog(stop_event, chain, last_hash_ref, session_path, file_even
 
     # Monitor for freezes
     while not stop_event.is_set():  
-        time.sleep(2)
+        time.sleep(2) #
 
         # Check if more than 5 seconds have passed since the last beat
         if time.time() - last_beat[0] > 5:
@@ -182,7 +182,7 @@ def run_monitor(local_paths: List[str], usb_mount: str, out_dir: list, monitor_u
     watchdog_thread.start()
     if monitor_usb and os.path.exists(usb_mount):
         if not is_real_usb_drive(usb_mount) or not is_usb_thumbdrive(usb_mount[:2]):
-            print(f"[!] Ignored NON-USB device at {usb_mount} (not removable storage)")
+            print(f"[!] Ignored NON-USB device at {usb_mount} (not removable USB thumbdrive or is external storage or is internal storage)")
         else:
             obs_usb = Observer()
             obs_usb.schedule(EventCollector(q,"USB"),usb_mount,recursive=True)
