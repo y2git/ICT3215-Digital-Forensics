@@ -126,11 +126,9 @@ def monitor_usb_insertion(callback):
 
 # Create USB observer
 def create_usb_observer(device, q, observers, chain, last, monitor_usb, stop_event, exec_events):
-    # Prevent duplicate observers (monitor.py created one already)
-    for obs in observers.values():
-        if getattr(obs, "_watch", None) and obs._watch.path == device:
-            print(f"[USB] Skipping duplicate observer for {device} (already monitored).")
-            return
+    if device in usb_observer_already_created:
+        return
+    usb_observer_already_created.add(device)
 
     # Sometimes Windows takes a second to mount the path
     for _ in range(5):
