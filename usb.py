@@ -10,7 +10,7 @@ from dataclasses import asdict
 
 import subprocess
 
-def is_usb_thumbdrive(drive_letter: str):
+def is_usb_devicetype(drive_letter: str):
 
     try:
         # Query diskdrive info associated with this drive letter
@@ -58,7 +58,7 @@ def is_usb_thumbdrive(drive_letter: str):
     except Exception:
         return False
 
-def is_real_usb_drive(path: str):
+def is_removable_storage(path: str):
     try:
         # Windows API: GetDriveTypeW(path)
         # 2 = removable drive
@@ -68,7 +68,7 @@ def is_real_usb_drive(path: str):
         return False
 
 def is_external_usb_storage(device: str):
-    return is_real_usb_drive(device) and not is_usb_thumbdrive(device[:2])
+    return is_removable_storage(device) and not is_usb_devicetype(device[:2])
    
 
 # Get USB Info (Windows)
@@ -174,11 +174,11 @@ def start_usb_monitor_thread(q, observers, chain, last, stop_event, exec_events,
         print(f"[!] Device {device} {action.upper()} at {now_sgt_iso()}") # log the event
         if action == "inserted":
             # Reject non-removable drives (HDD, SSD, NVMe)
-            if not is_real_usb_drive(device):
+            if not is_removable_storage(device):
                 print(f"[!] Ignored NON-USB device at {device} (not removable USB thumbdrive or is external storage or is internal storage)")
                 return
             
-            if not is_usb_thumbdrive(device[:2]):
+            if not is_usb_devicetype(device[:2]):
                 print(f"[!] Ignored NON-USB THUMBDRIVE device at {device}")
                 return
             if monitor_usb:
@@ -191,10 +191,10 @@ def start_usb_monitor_thread(q, observers, chain, last, stop_event, exec_events,
         mount = p.device
 
         # Is it a removable USB device at all?
-        if is_real_usb_drive(mount):
+        if is_removable_storage(mount):
 
             # Case 1: It *is* a USB thumbdrive
-            if is_usb_thumbdrive(mount[:2]):
+            if is_usb_devicetype(mount[:2]):
                 print(f"[!] Existing USB thumbdrive found at startup: {mount}")
 
             elif is_external_usb_storage(mount):

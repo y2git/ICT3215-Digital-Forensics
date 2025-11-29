@@ -7,7 +7,7 @@ from dataclasses import asdict
 from typing import List
 
 from events import EventCollector
-from usb import start_usb_monitor_thread, get_usb_device_info, is_real_usb_drive, is_usb_thumbdrive
+from usb import start_usb_monitor_thread, get_usb_device_info, is_removable_storage, is_usb_devicetype
 from models import ChainEntry, ExecEvent, FileEvent
 from utils import now_sgt_iso, now_sgt_str, file_sha256, atomic_write_json
 from chain import verify_chain
@@ -181,7 +181,7 @@ def run_monitor(local_paths: List[str], usb_mount: str, out_dir: list, monitor_u
     watchdog_thread = threading.Thread(target=heartbeat_watchdog, args=(stop_event, chain, previous_hash, session_path, file_events, exec_events, digest_dir, base_dir), daemon=True)
     watchdog_thread.start()
     if monitor_usb and os.path.exists(usb_mount):
-        if not is_real_usb_drive(usb_mount) or not is_usb_thumbdrive(usb_mount[:2]):
+        if not is_removable_storage(usb_mount) or not is_usb_devicetype(usb_mount[:2]):
             print(f"[!] Ignored NON-USB device at {usb_mount} (not removable USB thumbdrive or is external storage or is internal storage)")
         else:
             obs_usb = Observer()
