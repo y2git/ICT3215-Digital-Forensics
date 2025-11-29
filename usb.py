@@ -175,7 +175,7 @@ def start_usb_monitor_thread(q, observers, chain, last, stop_event, exec_events,
         if action == "inserted":
             # Reject non-removable drives (HDD, SSD, NVMe)
             if not is_real_usb_drive(device):
-                print(f"[!] Ignored NON-USB device at {device} (not removable storage)")
+                print(f"[!] Ignored NON-USB device at {device} (not removable USB thumbdrive or is external storage or is internal storage)")
                 return
             
             if not is_usb_thumbdrive(device[:2]):
@@ -183,8 +183,6 @@ def start_usb_monitor_thread(q, observers, chain, last, stop_event, exec_events,
                 return
             
             create_usb_observer(device, q, observers, chain, last, monitor_usb, stop_event, exec_events)
-        #if action == "inserted": # create observer when USB is inserted
-           # create_usb_observer(device, q, observers, chain, last, monitor_usb, stop_event, exec_events)
         
         elif action == "removed": # remove observer when USB is removed
             remove_usb_observer(device, observers, chain, last)
@@ -198,7 +196,6 @@ def start_usb_monitor_thread(q, observers, chain, last, stop_event, exec_events,
             # Case 1: It *is* a USB thumbdrive
             if is_usb_thumbdrive(mount[:2]):
                 print(f"[!] Existing USB thumbdrive found at startup: {mount}")
-                #usb_callback(mount, "inserted")
 
             elif is_external_usb_storage(mount):
                 print(f"[!] External USB storage detected at startup: {mount} (NOT a thumbdrive — ignored)")
