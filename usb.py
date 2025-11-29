@@ -67,6 +67,7 @@ def is_real_usb_drive(path: str):
     except Exception:
         return False
 
+
 # Get USB Info (Windows)
 def get_usb_device_info(drive_letter: str):
     info = {"mount": drive_letter, "volume_label": None, "serial_number": None, "pnp_id": None} # default info
@@ -167,7 +168,7 @@ def start_usb_monitor_thread(q, observers, chain, last, stop_event, exec_events,
 
     # USB insertion/removal callback
     def usb_callback(device, action):
-        print(f"[!] Device {device} {action.upper()} at {now_sgt_iso()}") # log the event
+        print(f"[USB] Device {device} {action.upper()} at {now_sgt_iso()}") # log the event
         if action == "inserted":
             # Reject non-removable drives (HDD, SSD, NVMe)
             if not is_real_usb_drive(device):
@@ -184,21 +185,5 @@ def start_usb_monitor_thread(q, observers, chain, last, stop_event, exec_events,
         
         elif action == "removed": # remove observer when USB is removed
             remove_usb_observer(device, observers, chain, last)
-            
-    for p in psutil.disk_partitions(all=False):
-        mount = p.device
-
-        # Is it a removable USB device at all?
-        if is_real_usb_drive(mount):
-
-            # Case 1: It *is* a USB thumbdrive
-            if is_usb_thumbdrive(mount[:2]):
-                print(f"[!] Existing USB thumbdrive found at startup: {mount}")
-                usb_callback(mount, "inserted")
-
-             # Case 2: It is removable USB storage but NOT a thumbdrive (SSD/HDD/etc.)
-            else:
-                print(f"[!] External USB storage detected at startup: {mount} (NOT a thumbdrive — ignored)")
-        
     #if monitor_usb:
     threading.Thread(target=monitor_usb_insertion, args=(usb_callback,), daemon=True).start() # start monitoring in a separate thread
