@@ -1,6 +1,5 @@
 import psutil, subprocess, time, os, json, threading, ctypes
 from pathlib import Path
-from torch import device
 from watchdog.observers import Observer
 
 from events import EventCollector
@@ -63,12 +62,16 @@ def is_removable_storage(path: str):
         # Windows API: GetDriveTypeW(path)
         # 2 = removable drive
         drive_type = ctypes.windll.kernel32.GetDriveTypeW(path)
-        return drive_type == 2
+        #print(f"Drive {path} type: {drive_type}")
+        if drive_type == 2:
+            return True
+        else: 
+            return False
     except Exception:
         return False
 
 def is_external_usb_storage(device: str):
-    return is_removable_storage(device) and not is_usb_devicetype(device[:2])
+    return not is_usb_devicetype(device[:2])
    
 
 # Get USB Info (Windows)
@@ -168,7 +171,7 @@ def remove_usb_observer(device, observers, chain, last):
 
 # Start USB monitor thread
 def start_usb_monitor_thread(q, observers, chain, last, stop_event, exec_events, monitor_usb=True):
-
+    
     # USB insertion/removal callback
     def usb_callback(device, action):
         print(f"[!] Device {device} {action.upper()} at {now_sgt_iso()}") # log the event
@@ -176,6 +179,12 @@ def start_usb_monitor_thread(q, observers, chain, last, stop_event, exec_events,
             # Reject non-removable drives (HDD, SSD, NVMe)
             if not is_removable_storage(device):
                 print(f"[!] Ignored NON-USB device at {device} (not removable USB thumbdrive or is external storage or is internal storage)")
+                usb_info = get_usb_device_info(device[:2])
+
+                # Add USB info to chain
+                chain_entry = ChainEntry.create("usb_inserted", usb_info, last[0])
+                chain.append(asdict(chain_entry))
+                last[0] = chain_entry.hash
                 return
             
             if not is_usb_devicetype(device[:2]):
@@ -189,16 +198,20 @@ def start_usb_monitor_thread(q, observers, chain, last, stop_event, exec_events,
             
     for p in psutil.disk_partitions(all=False):
         mount = p.device
-
+        wmic_cmd = [
+            "wmic", "diskdrive",
+            "get", "MediaType"
+        ]
+        result = subprocess.run(wmic_cmd, capture_output=True, text=True).stdout
+        if "Fixed hard disk media" in result:
+            continue  # Skip fixed drives
         # Is it a removable USB device at all?
-        if is_removable_storage(mount):
-
+        elif is_removable_storage(mount):
             # Case 1: It *is* a USB thumbdrive
             if is_usb_devicetype(mount[:2]):
                 print(f"[!] Existing USB thumbdrive found at startup: {mount}")
-
-            elif is_external_usb_storage(mount):
-                print(f"[!] External USB storage detected at startup: {mount} (NOT a thumbdrive — ignored)")
+        elif is_external_usb_storage(mount):
+            print(f"[!] External USB storage detected at startup: {mount} (NOT a thumbdrive — ignored)")
         
     #if monitor_usb:
     threading.Thread(target=monitor_usb_insertion, args=(usb_callback,), daemon=True).start() # start monitoring in a separate thread
