@@ -62,7 +62,6 @@ def is_removable_storage(path: str):
         # Windows API: GetDriveTypeW(path)
         # 2 = removable drive
         drive_type = ctypes.windll.kernel32.GetDriveTypeW(path)
-        #print(f"Drive {path} type: {drive_type}")
         if drive_type == 2:
             return True
         else: 
