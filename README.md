@@ -266,13 +266,13 @@ Within the final_digest_unclean_[timestamp].json, it contains the similar values
 
 ### Detect if U-See Bus was frozen during execution
 U-See Bus has a feature to detect if it becomes unresponsive during monitoring; when a runtime freeze is detected, it records a "runtime_freeze_detected" event and generates a forced_digest_[timestamp].json snapshot.  
-<img width="507" height="262" alt="image" src="https://github.com/user-attachments/assets/efe0dbec-4bf8-4d3d-b60f-0d9fb3e7849b" />
+<img width="781" height="220" alt="image" src="https://github.com/user-attachments/assets/e30111dd-4ca8-4a65-a28b-1afaa0ff5e83" />
 
 In the case that U-See Bus becomes frozen, a "runtime_freeze_detected" entry is added to the chain and a forced digest is created to show the state of the session at the freeze moment.  
-<img width="507" height="133" alt="image" src="https://github.com/user-attachments/assets/9728d5eb-1ce6-489f-ba2c-b446ebd8bc77" />
+<img width="683" height="179" alt="image" src="https://github.com/user-attachments/assets/058c6b62-af4c-4c36-abf5-5bf35c4d5f8e" />
 
 Forced digest verification compares the stored session_sha256 with the current hash of the session file to determine if the session was modified after the freeze event.  
-<img width="507" height="132" alt="image" src="https://github.com/user-attachments/assets/37dbe0ca-8056-4939-926b-61a7310dc852" />
+<img width="826" height="201" alt="image" src="https://github.com/user-attachments/assets/9db5bdf9-f3da-4d9e-9a3e-2d96cb3b166a" />
 
 ---
 
