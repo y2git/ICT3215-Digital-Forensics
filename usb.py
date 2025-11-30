@@ -70,10 +70,6 @@ def is_removable_storage(path: str):
     except Exception:
         return False
 
-def is_external_usb_storage(device: str):
-    return not is_usb_devicetype(device[:2])
-   
-
 # Get USB Info (Windows)
 def get_usb_device_info(drive_letter: str):
     info = {"mount": drive_letter, "volume_label": None, "serial_number": None, "pnp_id": None} # default info
@@ -210,8 +206,6 @@ def start_usb_monitor_thread(q, observers, chain, last, stop_event, exec_events,
             # Case 1: It *is* a USB thumbdrive
             if is_usb_devicetype(mount[:2]):
                 print(f"[!] Existing USB thumbdrive found at startup: {mount}")
-        elif is_external_usb_storage(mount):
-            print(f"[!] External USB storage detected at startup: {mount} (NOT a thumbdrive — ignored)")
         
     #if monitor_usb:
     threading.Thread(target=monitor_usb_insertion, args=(usb_callback,), daemon=True).start() # start monitoring in a separate thread
