@@ -182,9 +182,6 @@ def start_usb_monitor_thread(q, observers, chain, last, stop_event, exec_events,
                 last[0] = chain_entry.hash
                 return
             
-            if not is_usb_devicetype(device[:2]):
-                print(f"[!] Ignored NON-USB THUMBDRIVE device at {device}")
-                return
             if monitor_usb:
                 create_usb_observer(device, q, observers, chain, last, monitor_usb, stop_event, exec_events)
         
